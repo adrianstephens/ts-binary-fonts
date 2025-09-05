@@ -1,36 +1,44 @@
 {
-  "name": "@isopodlabs/binary_fonts",
-  "description": "A package for reading various font files with TypeScript.",
-  "main": "./dist/index.js",
-  "scripts": {
-    "build": "tsc",
-    "lint": "eslint \"src/**/*.ts\"",
-    "test": "echo \"No tests specified\" && exit 0",
-    "patch": "ts-patch install"
-  },
-  "keywords": [
-    "binary",
-    "typescript",
-    "data",
-    "read",
-    "write"
-  ],
-  "author": "Adrian Stephens",
-  "license": "MIT",
-  "devDependencies": {
-    "@types/node": "^22.13.8",
-    "@typescript-eslint/eslint-plugin": "^8.26.0",
-    "@typescript-eslint/parser": "^8.26.0",
-    "eslint": "^9.21.0",
-    "ts-node": "^10.9.2",
-    "ts-patch": "^3.3.0",
-    "typescript": "^5.8.2",
-    "typescript-eslint": "^8.26.0"
-  },
-  "dependencies": {
-    "@isopodlabs/binary": "^1.4.0",
-    "@isopodlabs/maths": "^0.2.0",
-    "@isopodlabs/xml": "^1.0.3"
-  },
-  "version": "0.3.3"
+	"name": "@isopodlabs/binary_fonts",
+	"description": "A package for reading various font files with TypeScript.",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/adrianstephens/ts-binary-fonts.git"
+	},
+	"main": "./dist/index.js",
+	"files": [
+		"dist/**/*.{js,d.ts}",
+		"README.md"
+	],
+	"scripts": {
+		"build": "tsc",
+		"lint": "eslint \"src/**/*.ts\"",
+		"test": "echo \"No tests specified\" && exit 0",
+		"patch": "ts-patch install"
+	},
+	"keywords": [
+		"binary",
+		"typescript",
+		"data",
+		"read",
+		"write"
+	],
+	"author": "Adrian Stephens",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^22.13.8",
+		"@typescript-eslint/eslint-plugin": "^8.26.0",
+		"@typescript-eslint/parser": "^8.26.0",
+		"eslint": "^9.21.0",
+		"ts-node": "^10.9.2",
+		"ts-patch": "^3.3.0",
+		"typescript": "^5.8.2",
+		"typescript-eslint": "^8.26.0"
+	},
+	"dependencies": {
+		"@isopodlabs/binary": "^1.4.0",
+		"@isopodlabs/maths": "^0.2.0",
+		"@isopodlabs/xml": "^1.0.3"
+	},
+	"version": "0.3.4"
 }

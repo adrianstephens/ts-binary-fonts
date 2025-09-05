@@ -1,6 +1,0 @@
-src
-tests
-.vscode
-*.tgz
-transform.ts
-*.js.map

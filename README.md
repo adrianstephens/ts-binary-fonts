@@ -1,7 +1,7 @@
 # Binary Fonts
 [![npm version](https://img.shields.io/npm/v/@isopodlabs/binary.svg)](https://www.npmjs.com/package/@isopodlabs/binary_fonts)
 [![GitHub stars](https://img.shields.io/github/stars/adrianstephens/binary_font.svg?style=social)](https://github.com/adrianstephens/binary_font)
-[![License](https://img.shields.io/npm/l/@isopodlabs/binary_fonts.svg)](LICENSE)
+[![License](https://img.shields.io/npm/l/@isopodlabs/binary_fonts.svg)](LICENSE.txt)
 
 This package provides readers for various font formats, using the @isopodlabs/binary, and the @isopodlabs/xml libraries.
 
@@ -11,7 +11,7 @@ Non bitmap glyphs can be converted to SVGs.
 
 
 ## ☕ Support My Work  
-If you use this package, consider [buying me a tea](https://coff.ee/adrianstephens) to support future updates!  
+If you use this package, consider [buying me a cup of tea](https://coff.ee/adrianstephens) to support future updates!  
 
 ## Usage
 Here's an example of how to use the binary_font package to read a font file and output an svg for the glyph representing 'A':
