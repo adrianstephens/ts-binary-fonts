@@ -1,14 +1,17 @@
-// @ts-check
 import eslint from "@eslint/js";
 import tslint from "typescript-eslint";
+async function maybeImport(modulePath) { try { return await import(modulePath); } catch { return undefined; } }
+let customPlugin = await maybeImport('../eslint-custom.mjs');
+// @ts-check
 
 export default tslint.config(
     eslint.configs.recommended,
     ...tslint.configs.recommended,
     ...tslint.configs.stylistic,
+	...(customPlugin ? [customPlugin.config] : []),
     {
         rules: {
-            "semi": ["error", "always"], // Add this line to enforce semicolon use
+                        "semi": ["error", "always"], // Add this line to enforce semicolon use
             "no-empty": "off",
             "@typescript-eslint/no-duplicate-enum-values": "off",
             "@typescript-eslint/no-empty-object-type": "off",

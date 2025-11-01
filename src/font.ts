@@ -1,6 +1,6 @@
 import * as binary from '@isopodlabs/binary';
 import * as xml from '@isopodlabs/xml';
-import {float2, float2x3, identity2x3, extent2} from '@isopodlabs/maths/dist/vector';
+import {float2, float2x3, extent2} from '@isopodlabs/maths/vector';
 import {color, curveVertex, curveExtent, parseCurve, FILL, EXTEND, Fill, Layer, parseSVGpath, makeSVGPath} from './curves';
 
 import {CFF} from "./cff";
@@ -392,7 +392,7 @@ const NameRecord = {
 	offset:			u16,	//Name string offset in bytes from stringOffset.
 };
 
-class name extends binary.ReadClass({
+export class name extends binary.ReadClass({
 	format:			u16,	//Format selector. Set to 0.
 	count:			u16,	//The number of nameRecords in this name table.
 	stringOffset:	u16,	//Offset in bytes to the beginning of the name character strings.
@@ -807,7 +807,7 @@ export function readComposite(file: binary.stream) {
 		const	flags	= entry.flags;
 		all_flags	|= flags;
 
-		const mat = identity2x3;
+		const mat = float2x3.identity();
 		if (flags & COMPOUND.ARG12_WORDS) {
 			mat.z = float2(binary.read(file, fixed16), binary.read(file, fixed16));
 		} else {
@@ -851,7 +851,7 @@ class GlyphReader extends binary.ReadClass({
 
 		} else {
 			const end_pts		= binary.readn(file, u16, this.num_contours);
-			this.instructions	= binary.read(file, binary.Buffer(u16));
+			this.instructions	= binary.read(file, binary.Buffer(u16)) as Instructions;
 			const npts			= end_pts[this.num_contours - 1] + 1;
 
 			const flags: number[] = [];
@@ -1917,6 +1917,11 @@ const tableReaders = {
 //@internal
 export const tableTypes = Object.keys(tableReaders);
 
+function fix<T>(obj: any, name: string, value: T): T {
+	Object.defineProperty(obj, name, {value, writable: false, configurable: false});
+	return value;
+}
+
 export class Font extends makeClass<{
 	[K in keyof typeof tableReaders]?: binary.ReadType<typeof tableReaders[K]>
 }>() {
@@ -1927,8 +1932,15 @@ export class Font extends makeClass<{
 
 	loadTable(tag: string, data: Uint8Array) {
 		const type = tableReaders[tag as keyof typeof tableReaders];
-		if (type)
-			(this as any)[tag] = binary.read(new binary.stream(data), type);
+		if (type) {
+			Object.defineProperty(this, tag, {
+				get() { return fix(this, tag, binary.read(new binary.stream(data), type)); },
+				enumerable: true,
+				configurable: true,
+				//set(v) { Object.defineProperty(this, '_' + tag, {value: v, writable: false, configurable: false}); }
+			});
+			//(this as any)[tag] = binary.read(new binary.stream(data), type);
+		}
 	}
 
 	numGlyphs() {
@@ -2022,15 +2034,4 @@ export class Font extends makeClass<{
 			);
 	}
 
-}
-
-//-----------------------------------------------------------------------------
-//	Font Group
-//-----------------------------------------------------------------------------
-
-export abstract class FontGroup {
-	fonts: Font[] = [];
-	getSub(sub: string) {
-		return this.fonts.find(i => (i.name as name).names[2] === sub);
-	}
 }

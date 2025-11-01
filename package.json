@@ -35,7 +35,7 @@
 		"typescript-eslint": "^8.26.0"
 	},
 	"dependencies": {
-		"@isopodlabs/binary": "^1.4.0",
+		"@isopodlabs/binary": "^1.5.0",
 		"@isopodlabs/maths": "^0.2.0",
 		"@isopodlabs/xml": "^1.0.3"
 	},

@@ -4,7 +4,8 @@ import * as fontbin from '../dist';
 
 (async() => {
 	// Load a font file
-	const font = await fontbin.loadFile('/Users/adrianstephens/Downloads/cbdt.ttf');
+	//const font = await fontbin.loadFile('/Users/adrianstephens/Downloads/cbdt.ttf');
+	const font = await fontbin.loadFile('c:\\Windows\\Fonts\\ALGER.TTF');
 
 	if (font && font instanceof fontbin.Font) {
 

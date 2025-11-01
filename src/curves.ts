@@ -1,15 +1,5 @@
-import {
-	float2,
-	extent2,
-	reflect,
-	float2x2, 	mul2x2,	inverse2x2, det2x2,
-	float2x3,	mul2x3, inverse2x3,
-	matmul2,
-	max_circle_point,
-	mid,
-} from '@isopodlabs/maths/dist/vector';
-
-import { circle } from '@isopodlabs/maths/dist/geometry';
+import { float2, extent2, reflect, float2x2, float2x3, max_circle_point, mid }  from '@isopodlabs/maths/vector';
+import { circle } from '@isopodlabs/maths/geometry';
 
 export interface color {
 	r: number,
@@ -88,7 +78,7 @@ export function direction(curve: curveVertex[]) {
 }
 
 export function transformCurve(curve: curveVertex[] | undefined, transform: float2x3) {
-	return curve ? curve.map(i => makeCurveVertex(mul2x3(transform, i.pos), i.flags)) : [];
+	return curve ? curve.map(i => makeCurveVertex(transform.mulPos(i.pos), i.flags)) : [];
 }
 
 //	translate between points-on-curve format and radii/angle format
@@ -97,15 +87,15 @@ class ArcParams {
 
 	static make2off(p0: float2, p1: float2, p2: float2, p3: float2) {	// 2 off-curve
 		const	m0	= float2x2(p3.sub(p0), p1.sub(p0));		//chord, incoming direction
-		const	d1t	= mul2x2(inverse2x2(m0), p2.sub(p3));		//outgoing direction
+		const	d1t	= m0.inverse().mul(p2.sub(p3));		//outgoing direction
 		const	s	= -d1t.x / (2 * d1t.y);						//shear to make d1, d2 reflections of each other
 		const	r	= Math.sqrt(1 + s * s) / 2;					//radius
-		const	mi	= matmul2(m0, float2x2(float2(1, 0), float2(-s, 1)));
-		const	sc	= max_circle_point(mi);
+		const	mi	= m0.matmul(float2x2(float2(1, 0), float2(-s, 1)));
+		const	sc	= max_circle_point(mi as float2x2);
 	
-		const	axis1	= mul2x2(mi, sc);
-		const	axis2	= mul2x2(mi, sc.perp());
-		return new ArcParams(float2(axis2.len() * r, axis1.len() * r), -Math.atan2(axis1.y, axis1.x), det2x2(m0) < 0, s < 0);
+		const	axis1	= mi.mul(sc);
+		const	axis2	= mi.mul(sc.perp());
+		return new ArcParams(float2(axis2.len() * r, axis1.len() * r), -Math.atan2(axis1.y, axis1.x), m0.det() < 0, s < 0);
 	}
 	static make1off(p0: float2, p1: float2, p2: float2) {				// 1 off-curve
 		const	y	= p2.sub(p0);	//chord
@@ -117,10 +107,10 @@ class ArcParams {
 	}
 
 	matrix()	{
-		return matmul2(float2.rotate(this.angle), float2.scale(float2(this.radii.x, this.radii.y)));
+		return float2.rotate(this.angle).matmul(float2.scale(float2(this.radii.x, this.radii.y)));
 	}
 	fix_radii(p0: float2, p1: float2) {
-		const	d1	= mul2x2(inverse2x2(this.matrix()), p1.sub(p0).mul(0.5));
+		const	d1	= this.matrix().inverse().mul(p1.sub(p0).scale(0.5));
 		const	d2	= d1.len();
 		if (d2 > 1) {
 			this.radii.x *= d2;
@@ -129,31 +119,31 @@ class ArcParams {
 	}
 	ellipse(p0: float2, p1: float2) {
 		let		m	= this.matrix();
-		const	d1	= mul2x2(inverse2x2(m), p1.sub(p0).mul(0.5));
+		const	d1	= m.inverse().mul(p1.sub(p0).scale(0.5));
 		const	d2	= d1.lensq();
 		const	middle	= mid(p0, p1);
 	
 		if (d2 > 1) {
-			m = matmul2(float2.scale(Math.sqrt(d2)), m);
+			m = float2.scale(Math.sqrt(d2)).matmul(m);
 			return float2x3(m.x, m.y, middle);
 		}
 		const	y0	= Math.sqrt(1 - d2);
 		const	y	= this.big === this.clockwise ? -y0 : y0;
-		return float2x3(m.x, m.y, middle.add(mul2x2(m, d1.mul(y / Math.sqrt(d2)).perp())));
+		return float2x3(m.x, m.y, middle.add(m.mul(d1.scale(y / Math.sqrt(d2)).perp())));
 	}
 	control_points(p0: float2, p1: float2) {
 		const	e	= this.ellipse(p0, p1);
-		const	ei	= inverse2x3(e);
-		let		c0	= mul2x3(ei, p0);
-		let		c1	= mul2x2(ei, p1);
+		const	ei	= e.inverse();
+		let		c0	= ei.mulPos(p0);
+		let		c1	= ei.mulPos(p1);
 		if (this.clockwise) {
-			c0 = c0.add(c0.perp().mul(2));
-			c1 = c1.sub(c1.perp().mul(2));
+			c0 = c0.add(c0.perp().scale(2));
+			c1 = c1.sub(c1.perp().scale(2));
 		} else {
-			c0 = c0.sub(c0.perp().mul(2));
-			c1 = c1.add(c1.perp().mul(2));
+			c0 = c0.sub(c0.perp().scale(2));
+			c1 = c1.add(c1.perp().scale(2));
 		}
-		return [mul2x3(e, c0), mul2x3(e, c1)];
+		return [e.mulPos(c0), e.mulPos(c1)];
 	}
 };
 

@@ -3,7 +3,7 @@ import * as xml from '@isopodlabs/xml';
 import * as binary from '@isopodlabs/binary';
 import {Font, vec2, Glyph, loadLocs, loadMetrics, readComposite, tableTypes} from './font';
 import {curveVertex, curveExtent, parseCurve, makeCurveVertex} from './curves';
-import {float2} from '@isopodlabs/maths/dist/vector';
+import {float2} from '@isopodlabs/maths/vector';
 
 const TAG		= binary.StringType(4);
 const u8 		= binary.UINT8;

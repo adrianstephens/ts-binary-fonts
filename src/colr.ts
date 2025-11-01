@@ -1,11 +1,7 @@
 import * as binary from '@isopodlabs/binary';
-import {Font, vec2} from './font';
-import {
-	float2,
-	float2x2,	det2x2, 
-	float2x3,	identity2x3,	mul2x3,	matmul2,
-} from '@isopodlabs/maths/dist/vector';
-import { circle } from '@isopodlabs/maths/dist/geometry';
+import { Font, vec2 } from './font';
+import { float2, float2x2, float2x3 } from '@isopodlabs/maths/vector';
+import { circle } from '@isopodlabs/maths/geometry';
 
 import {color, curveVertex, transformCurve, reverseCurve, direction, FILL, Fill, Layer} from './curves';
 
@@ -82,7 +78,7 @@ const ColorLine = {
 
 export class PaintContext {
 	layers:		Layer[]	= [];
-	transform		= identity2x3;
+	transform		= float2x3.identity();
 	private curves: curveVertex[]	= [];
 
 	constructor(public font: Font, public COLR: COLR, public palette?: color[]) {}
@@ -292,7 +288,7 @@ class PaintGlyph extends SubPaint {
 			if (!curve && g.refs)
 				curve = g.refs.reduce((all, r) => [...all, ...transformCurve(ctx.getGlyph(r.glyph)?.curve, r.mat)], [] as curveVertex[]);
 
-			if (direction(curve) !== (det2x2(ctx.transform) < 0))
+			if (direction(curve) !== (ctx.transform.det() < 0))
 				reverseCurve(curve);
 
 			ctx.addCurves(transformCurve(curve, ctx.transform));
@@ -303,7 +299,7 @@ class PaintGlyph extends SubPaint {
 
 const Affine2x3 = binary.as(
 	binary.OffsetType(u24, {x: vec2(fixed32), y: vec2(fixed32), d: vec2(fixed32)}),
-	v => v ? float2x3(v.x, v.y, v.d) : identity2x3
+	v => v ? float2x3(v.x, v.y, v.d) : float2x3.identity()
 );
 const Translate		= binary.as(vec2(s16), 		v => float2.translate(v));
 const Scale			= binary.as(vec2(fixed16),	v => float2.scale(v));
@@ -313,7 +309,7 @@ const Skew 			= binary.as(vec2(fixed16),	v => float2x2(float2(1, v.y), float2(v.
 
 function WithCentre(transform: binary.TypeT<float2x3|float2x2>) {
 	return binary.as({transform, center: vec2(s16)}, x =>
-		float2x3(x.transform.x, x.transform.y, x.center.add(mul2x3(x.transform, x.center.neg())))
+		float2x3(x.transform.x, x.transform.y, x.center.add(x.transform.mulPos(x.center.neg())))
 	);
 }
 
@@ -325,7 +321,7 @@ class PaintTransformBase extends SubPaint {
 		this.transform = binary.read(file, transform);
 	}
 	apply(ctx: PaintContext) {
-		const save = matmul2(ctx.transform, this.transform);
+		const save = ctx.transform.mulAffine(this.transform);
 		this.paint.apply(ctx);
 		ctx.transform = save;
 	}

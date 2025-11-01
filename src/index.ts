@@ -1,12 +1,23 @@
 import * as binary from '@isopodlabs/binary';
-import {Font, FontGroup, tableTypes, loadLocs, loadMetrics} from './font';
+import {Font, tableTypes, loadLocs, loadMetrics, name} from './font';
 import {WOFF, WOFF2} from "./woff";
 
-export {Font, FontGroup} from './font';
+export {Font} from './font';
 
 const TAG		= binary.StringType(4);
 const u16 		= binary.UINT16_BE;
 const u32 		= binary.UINT32_BE;
+
+//-----------------------------------------------------------------------------
+//	Font Group
+//-----------------------------------------------------------------------------
+
+export abstract class FontGroup {
+	fonts: Font[] = [];
+	getSub(sub: string) {
+		return this.fonts.find(i => (i.name as name).names[2] === sub);
+	}
+}
 
 //-----------------------------------------------------------------------------
 //	TTF

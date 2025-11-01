@@ -1,7 +1,7 @@
 
 import * as binary from '@isopodlabs/binary';
 import {curveVertex} from './curves';
-import {float2, extent2} from '@isopodlabs/maths/dist/vector';
+import {float2, extent2} from '@isopodlabs/maths/vector';
 
 function as<T>(type: binary.Type) {
 	return binary.as(type, i => i as T);
@@ -264,7 +264,7 @@ class subrs {
 	}
 	get(i: number) {
 		const block = this.blocks[Math.floor(i) + this.bias];
-		return block;
+		return block as Ops;
 	}
 };
 
@@ -433,7 +433,12 @@ class CFF_VM extends PS_VM {
 					case op.exch:		v = st(1); set(1, st0); set0(v);	break;
 					case op.roll:		v = pop(); roll_stack(this.st, pop(), v);		break;
 					case op.index:		push(st(pop()));								break;
-					case op.ifelse:		v = pop(); if (v < pop()) set(1, st0); pop();	break;
+					case op.ifelse:
+						v = pop();
+						if (v < pop())
+							set(1, st0);
+						pop();
+						break;
 
 					// storage ops
 					case op.put:		v = pop(); this.temps[Math.floor(v)] = pop();	break;
@@ -1212,7 +1217,7 @@ export class CFF extends binary.Class({
 			const lsubrs	= dict.lookup(prop.Subrs);
 			const vm		= new CFF_VM(this.gsubrs, lsubrs, this.nominalWidth, dict.lookup(prop.defaultWidthX) || 0);
 
-			vm.Interpret(i);
+			vm.Interpret(i as Ops);
 
 			const bb = this.pub_dict.lookup(prop.FontBBox);
 			return {

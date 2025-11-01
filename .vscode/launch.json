@@ -7,15 +7,6 @@
         {
             "type": "node",
             "request": "launch",
-            "name": "Test vectors",
-            "runtimeExecutable": "ts-node",
-            "cwd": "${workspaceFolder}",
-            "args": ["tests/testvec.ts"],
-            "preLaunchTask": "npm: build"
-        },
-        {
-            "type": "node",
-            "request": "launch",
             "name": "Test fonts",
             "runtimeExecutable": "ts-node",
             "cwd": "${workspaceFolder}",
