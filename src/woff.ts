@@ -1,15 +1,15 @@
 import * as zlib from 'zlib';
 import * as xml from '@isopodlabs/xml';
-import * as binary from '@isopodlabs/binary';
+import * as bin from '@isopodlabs/binary';
 import {Font, vec2, Glyph, loadLocs, loadMetrics, readComposite, tableTypes} from './font';
 import {curveVertex, curveExtent, parseCurve, makeCurveVertex} from './curves';
 import {float2} from '@isopodlabs/maths/vector';
 
-const TAG		= binary.StringType(4);
-const u8 		= binary.UINT8;
-const u16 		= binary.UINT16_BE;
-const s16 		= binary.INT16_BE;
-const u32 		= binary.UINT32_BE;
+const TAG		= bin.StringType(4);
+const u8 		= bin.UINT8;
+const u16 		= bin.UINT16_BE;
+const s16 		= bin.INT16_BE;
+const u32 		= bin.UINT32_BE;
 
 //-----------------------------------------------------------------------------
 //	WOFF
@@ -29,7 +29,7 @@ const WOFFHeader = {
 	privOffset:		u32,	//Offset to private data block, from beginning of WOFF file.
 	privLength:		u32,	//Length of private data block.
 
-	tables:	binary.ArrayType(s => s.obj.numTables, {
+	tables:	bin.ArrayType(s => s.obj.numTables, {
 		tag:			TAG,	//4-byte sfnt table identifier.
 		offset:			u32,	//Offset to the data, from beginning of WOFF file.
 		compLength:		u32,	//Length of the compressed data, excluding padding.
@@ -50,17 +50,18 @@ export class WOFF extends Font {
 	metadata?:	xml.Element;
 	priv?:		Uint8Array;
 
-	static async load(file: binary.stream) {
+	static async load(file: bin.stream) {
 		const me 	= new WOFF;
-		const h		= binary.read(file, WOFFHeader);
+		const h		= bin.read(file, WOFFHeader);
 		console.log(h);
 
 		if (h.metaLength) {
-			const buffer = inflateAsync(file.buffer_at(h.metaOffset, h.metaLength));
+			//const buffer = inflateAsync(file.buffer_at(h.metaOffset, h.metaLength));
+			const buffer = inflateAsync(bin.read(file, bin.OffsetType(h.metaOffset, bin.Buffer(h.metaLength))));
 			me.metadata = xml.parse((await buffer).toString());
 		}
 		if (h.privLength) {
-			const buffer = inflateAsync(file.buffer_at(h.privOffset, h.privLength));
+			const buffer = inflateAsync(bin.read(file, bin.OffsetType(h.privOffset, bin.Buffer(h.privLength))));
 			me.priv = await buffer;
 		}
 
@@ -70,10 +71,10 @@ export class WOFF extends Font {
 		function getTable(tag: string) {
 			const table = findTable(tag);
 			if (table) {
-				const buffer = file.buffer_at(table.offset, table.compLength);
+				const buffer = bin.read(file, bin.OffsetType(table.offset, bin.Buffer(table.compLength)));
 				return table.compLength != table.origLength
 					? inflateAsync(buffer)
-					: file.buffer_at(table.offset, table.origLength);
+					: bin.read(file, bin.OffsetType(table.offset, bin.Buffer(table.origLength)));
 			}
 		}
 		for (const i of tableTypes) {
@@ -102,7 +103,7 @@ export class WOFF extends Font {
 //-----------------------------------------------------------------------------
 
 const UShort255 = {
-	get(s: binary._stream) {
+	get(s: bin._stream) {
 		const oneMoreByteCode1    = 255;
 		const oneMoreByteCode2    = 254;
 		const wordCode            = 253;
@@ -114,12 +115,12 @@ const UShort255 = {
 			:	code == oneMoreByteCode2	? u8.get(s) + lowestUCode * 2
 			:	code;
 	},
-	put(_s: binary._stream, _v: number) {
+	put(_s: bin._stream, _v: number) {
 	}
 };
 
 const UIntBase128 = {
-	get(s: binary._stream) {
+	get(s: bin._stream) {
 		let accum = 0;
 		for (let i = 0; i < 5; i++) {
 			const byte = u8.get(s);
@@ -129,7 +130,7 @@ const UIntBase128 = {
 		}
 		throw new Error("bad uint");
 	},
-	put(_s: binary._stream, _v: number) {
+	put(_s: bin._stream, _v: number) {
 	}
 };
 
@@ -170,11 +171,11 @@ const TripletEncodingTable = [
 	MC(-16, 0,	-16, 0),	MC(+16, 0,	-16, 0),	MC(-16, 0,	+16, 0),	MC(+16, 0,	+16, 0),
 ];
 
-function decodeTriplet(flags: number, file: binary._stream): float2 {
+function decodeTriplet(flags: number, file: bin._stream): float2 {
 	const e		= TripletEncodingTable[flags & 0x7f];
 	const xbits	= Math.abs(e.xbits);
 	const ybits = Math.abs(e.ybits);
-	const value = Number(binary.UINT(xbits + ybits, true).get(file));
+	const value = Number(bin.UINT(xbits + ybits, true).get(file));
 	const x		= e.xdelta + (value >> ybits);
 	const y		= e.ydelta + (value & ((1 << ybits) - 1));
 	return float2(e.xbits < 0 ? -x : x, e.ybits < 0 ? -y : y);
@@ -206,29 +207,29 @@ const WOFF2Header = {
 	privOffset:		u32,	//Offset to private data block, from beginning of WOFF file.
 	privLength:		u32,	//Length of private data block.
 
-	tables:	binary.ArrayType(s => s.obj.numTables, {
+	tables:	bin.ArrayType(s => s.obj.numTables, {
 		flags:				u8,		//table type and flags
-		tag:				binary.Switch(s => (s.obj.flags & 63) === 63 ? 1 : 0, {
-			0: binary.Func(s => KnownTags[s.obj.flags & 63]),
+		tag:				bin.Switch(s => (s.obj.flags & 63) === 63 ? 1 : 0, {
+			0: bin.Func(s => KnownTags[s.obj.flags & 63]),
 			1: TAG,
 		}),
 		origLength:			UIntBase128,
 		// transformed length (if applicable)
-		transformLength:	binary.Optional(s => (s.obj.tag == 'glyf' || s.obj.tag == 'loca') === !(s.obj.flags >> 6), UIntBase128),
-		data:				binary.DontRead<Uint8Array>(),
+		transformLength:	bin.Optional(s => (s.obj.tag == 'glyf' || s.obj.tag == 'loca') === !(s.obj.flags >> 6), UIntBase128),
+		data:				bin.DontRead<Uint8Array>(),
 	}),
 
-	sub:	binary.Optional(s => s.obj.flavor === 'ttcf', {
+	sub:	bin.Optional(s => s.obj.flavor === 'ttcf', {
 		version:	u32,
-		subs:		binary.ArrayType(UShort255, {
+		subs:		bin.ArrayType(UShort255, {
 			numTables:		UShort255,
 			flavor:			u32,
-			table_indices:	binary.ArrayType(s => s.obj.numTables, UShort255),
+			table_indices:	bin.ArrayType(s => s.obj.numTables, UShort255),
 		})
 	}),
 };
 
-class WOFF2TransformedGlyf extends binary.Class({
+class WOFF2TransformedGlyf extends bin.Class({
 	reserved:				u16,	// 0x0000
 	optionFlags:			u16,	// Bit 0: if set, indicates the presence of the overlapSimpleBitmap[] bit array. Bits 1-15: Reserved.
 	numGlyphs:				u16,	// Number of glyphs
@@ -243,30 +244,31 @@ class WOFF2TransformedGlyf extends binary.Class({
 }) {
 	glyphs:	Glyph[];
 
-	constructor(file: binary.stream) {
+	constructor(file: bin.stream) {
 		super(file);
-		const nContourStream		= file.read_buffer(this.nContourStreamSize);	//Stream of Int16 values representing number of contours for each glyph record
-		const nPointsStream			= file.read_buffer(this.nPointsStreamSize);		//Stream of values representing number of outline points for each contour in glyph records
-		const flagStream			= file.read_buffer(this.flagStreamSize);		//Stream of UInt8 values representing flag values for each outline point.
-		const glyphStream			= file.read_buffer(this.glyphStreamSize);		//Stream of bytes representing point coordinate values using variable length encoding format (defined in subclause 5.2)
-		const compositeStream		= file.read_buffer(this.compositeStreamSize);	//Stream of bytes representing component flag values and associated composite glyph data
-		const bboxStream			= file.read_buffer(this.bboxStreamSize);
-		const instructionStream		= file.read_buffer(this.instructionStreamSize);	//Stream of UInt8 values representing a set of instructions for each corresponding glyph
-		const _overlapSimpleBitmap	= file.remainder();	//A numGlyphs-long bit array that provides values for the overlap flag [bit 6] for each simple glyph. (Flag values for composite glyphs are already encoded as part of the compositeStream[]).
+		const nContourStream		= bin.read_buffer(file, this.nContourStreamSize);	//Stream of Int16 values representing number of contours for each glyph record
+		const nPointsStream			= bin.read_buffer(file, this.nPointsStreamSize);		//Stream of values representing number of outline points for each contour in glyph records
+		const flagStream			= bin.read_buffer(file, this.flagStreamSize);		//Stream of UInt8 values representing flag values for each outline point.
+		const glyphStream			= bin.read_buffer(file, this.glyphStreamSize);		//Stream of bytes representing point coordinate values using variable length encoding format (defined in subclause 5.2)
+		const compositeStream		= bin.read_buffer(file, this.compositeStreamSize);	//Stream of bytes representing component flag values and associated composite glyph data
+		const bboxStream			= bin.read_buffer(file, this.bboxStreamSize);
+		const instructionStream		= bin.read_buffer(file, this.instructionStreamSize);	//Stream of UInt8 values representing a set of instructions for each corresponding glyph
+		const _overlapSimpleBitmap	= bin.remainder(file);	//A numGlyphs-long bit array that provides values for the overlap flag [bit 6] for each simple glyph. (Flag values for composite glyphs are already encoded as part of the compositeStream[]).
 
-		const nc	= Array.from(binary.utils.to16s(nContourStream, true));
+		const nc	= Array.from(bin.utils.as16s(nContourStream, true));
 
-		const pfile = new binary.stream(nPointsStream);
-		const ffile	= new binary.stream(flagStream);
-		const gfile	= new binary.stream(glyphStream);
-		const cfile	= new binary.stream(compositeStream);
-		const ifile	= new binary.stream(instructionStream);
-		const bfile	= new binary.stream(bboxStream);
+		const pfile = new bin.stream(nPointsStream);
+		const ffile	= new bin.stream(flagStream);
+		const gfile	= new bin.stream(glyphStream);
+		const cfile	= new bin.stream(compositeStream);
+		const ifile	= new bin.stream(instructionStream);
+		const bfile	= new bin.stream(bboxStream);
 
-		const bboxBitmap = bfile.read_buffer((this.numGlyphs + 7) >> 3);
+		//const bboxBitmap = bfile.read_buffer((this.numGlyphs + 7) >> 3);
+		const bboxBitmap = bin.read(bfile, bin.Buffer((this.numGlyphs + 7) >> 3));
 
 		this.glyphs = nc.map((nc, index) => {
-			let bbox = bboxBitmap[index >> 3] & (1 << (index & 7)) ? binary.read(bfile, {min: vec2(s16), max: vec2(s16)}) : undefined;
+			let bbox = bboxBitmap[index >> 3] & (1 << (index & 7)) ? bin.read(bfile, {min: vec2(s16), max: vec2(s16)}) : undefined;
 			let instructions;
 
 			if (nc < 0) {
@@ -276,7 +278,8 @@ class WOFF2TransformedGlyf extends binary.Class({
 				const {refs, have_instructions} = readComposite(cfile);
 				if (have_instructions) {
 					const ins = UShort255.get(gfile);
-					instructions = ifile.read_buffer(ins);
+					//instructions = ifile.read_buffer(ins);
+					instructions = bin.read(ifile, bin.Buffer(ins));
 				}
 	
 				return {
@@ -299,7 +302,8 @@ class WOFF2TransformedGlyf extends binary.Class({
 						}
 					}
 					const ins = UShort255.get(gfile);
-					instructions = ifile.read_buffer(ins);
+					//instructions = ifile.read_buffer(ins);
+					instructions = bin.read(ifile, bin.Buffer(ins));
 				}
 
 				if (!bbox)
@@ -321,21 +325,23 @@ export class WOFF2 extends Font {
 	metadata?:	xml.Element;
 	priv?:		Uint8Array;
 
-	static async load(file: binary.stream) {
+	static async load(file: bin.stream) {
 		const me 	= new WOFF2;
-		const h		= binary.read(file, WOFF2Header);
+		const h		= bin.read(file, WOFF2Header);
 		console.log(h);
 
 		if (h.metaLength) {
-			const buffer = brotliAsync(file.buffer_at(h.metaOffset, h.metaLength));
+			//const buffer = brotliAsync(file.buffer_at(h.metaOffset, h.metaLength));
+			const buffer = brotliAsync(bin.read(file, bin.OffsetType(h.metaOffset, bin.Buffer(h.metaLength))));
 			me.metadata = xml.parse((await buffer).toString());
 		}
 		if (h.privLength) {
-			const buffer = brotliAsync(file.buffer_at(h.privOffset, h.privLength));
+			//const buffer = brotliAsync(file.buffer_at(h.privOffset, h.privLength));
+			const buffer = brotliAsync(bin.read(file, bin.OffsetType(h.privOffset, bin.Buffer(h.privLength))));
 			me.priv = await buffer;
 		}
 
-		const comp		= file.read_buffer(h.totalCompressedSize);
+		const comp		= bin.read(file, bin.Buffer(h.totalCompressedSize));
 		const uncomp	= await brotliAsync(comp);
 
 		let offset = 0;
@@ -360,7 +366,7 @@ export class WOFF2 extends Font {
 		const glyf = findTable('glyf');
 		if (loca && glyf) {
 			if ((glyf.flags & 0xc0) == 0) {
-				const g = new WOFF2TransformedGlyf(new binary.stream(glyf.data!));
+				const g = new WOFF2TransformedGlyf(new bin.stream(glyf.data!));
 				me.cached	= g.glyphs;
 			} else {
 				me.glyphdata = loadLocs(loca.data!, glyf.data!, me.head!.indexToLocFormat);
@@ -373,15 +379,15 @@ export class WOFF2 extends Font {
 			const	numGlyphs	= me.numGlyphs();
 			const	numMetrics	= me.hhea.numOfLongMetrics;
 			if (hmtx.flags & 0xc0) {
-				const	hfile		= new binary.stream(hmtx.data!);
+				const	hfile		= new bin.stream(hmtx.data!);
 				const	flags		= u8.get(hfile);
-				const	metrics 	= binary.readn(hfile, u16, numMetrics).map(i => ({advance: i, bearing: 0}));
+				const	metrics 	= bin.readn(hfile, u16, numMetrics).map(i => ({advance: i, bearing: 0}));
 				const	minxs		= me.cached.map(i => i!.min.x);
 
-				(flags & 1 ? minxs.slice(0, numMetrics) : binary.readn(hfile, s16, numMetrics))
+				(flags & 1 ? minxs.slice(0, numMetrics) : bin.readn(hfile, s16, numMetrics))
 					.forEach((i, index) => metrics[index].bearing = i);
 
-				const bearing = !(flags & 2) ? binary.readn(hfile, s16, numGlyphs - numMetrics)	: minxs.slice(numMetrics);
+				const bearing = !(flags & 2) ? bin.readn(hfile, s16, numGlyphs - numMetrics)	: minxs.slice(numMetrics);
 				me.hmtx = {metrics, bearing};
 
 			} else {

@@ -1,6 +1,6 @@
-import * as binary from '@isopodlabs/binary';
+import * as bin from '@isopodlabs/binary';
 import * as xml from '@isopodlabs/xml';
-import {float2, float2x3, extent2} from '@isopodlabs/maths/vector';
+import {float2, float2x3} from '@isopodlabs/maths/vector';
 import {color, curveVertex, curveExtent, parseCurve, FILL, EXTEND, Fill, Layer, parseSVGpath, makeSVGPath} from './curves';
 
 import {CFF} from "./cff";
@@ -72,8 +72,8 @@ function arrayRotate<T>(array: T[], start: number, end: number, shift: number): 
 	}
 }
 
-function as<T>(type: binary.TypeT<T>) {
-	return binary.as(type, i => i as T);
+function as<T>(type: bin.TypeT<T>) {
+	return bin.as(type, i => i as T);
 }
 
 //-----------------------------------------------------------------------------
@@ -82,21 +82,21 @@ function as<T>(type: binary.TypeT<T>) {
 
 const timeAdjust = new Date('1970-01-01T00:00:00Z').getTime() - new Date('1904-01-01T00:00:00Z').getTime();
 
-const datetime64 = binary.as(binary.INT64_BE, i => new Date(Number(i) * 1000 - timeAdjust));
-const TAG		= binary.StringType(4);
-const u8 		= binary.UINT8;
-const s8 		= binary.INT8;
-const u16 		= binary.UINT16_BE;
-const s16 		= binary.INT16_BE;
-const u32 		= binary.UINT32_BE;
-const u24		= binary.UINT(24, true);
+const datetime64 = bin.as(bin.INT64_BE, i => new Date(Number(i) * 1000 - timeAdjust));
+const TAG		= bin.StringType(4);
+const u8 		= bin.UINT8;
+const s8 		= bin.INT8;
+const u16 		= bin.UINT16_BE;
+const s16 		= bin.INT16_BE;
+const u32 		= bin.UINT32_BE;
+const u24		= bin.UINT(24, true);
 
-const fixed16	= binary.asFixed(u16, 14);
-const fixed8	= binary.asFixed(u8, 6);
+const fixed16	= bin.asFixed(u16, 14);
+const fixed8	= bin.asFixed(u8, 6);
 
 //@internal
-export function vec2(type: binary.TypeT<number>): binary.TypeT<float2> {
-	return binary.as({x: type, y: type}, v => float2(v.x, v.y));
+export function vec2(type: bin.TypeT<number>): bin.TypeT<float2> {
+	return bin.as({x: type, y: type}, v => float2(v.x, v.y));
 }
 
 const enum PLATFORM {
@@ -171,7 +171,7 @@ const enum ENCODING {
 //	OS/2
 //-----------------------------------------------------------------------------
 
-class PANOSE extends binary.Class({
+class PANOSE extends bin.Class({
 	bFamilyType:		u8,
 	bSerifStyle:		u8,
 	bWeight:			u8,
@@ -198,8 +198,8 @@ const OS2 = {
 	strikeout_position:	s16,
 	family_class:		s16,
 	panose:				PANOSE,
-	unicode_range:		binary.ArrayType(4, u32),
-	vend_id:			binary.StringType(4),
+	unicode_range:		bin.ArrayType(4, u32),
+	vend_id:			bin.StringType(4),
 	selection:			u16,
 	first_char_index:	u16,
 	last_char_index:	u16,
@@ -210,17 +210,17 @@ const OS2 = {
 	win_ascent:			u16,
 	win_descent:		u16,
 	//v1
-	_: binary.If(s => s.obj.version >= 1, {
-		codepage_range:		binary.ArrayType(2, u32),
+	_: bin.If(s => s.obj.version >= 1, {
+		codepage_range:		bin.ArrayType(2, u32),
 	//v2,3,4
-		_: binary.If(s => s.obj.version >= 2, {
+		_: bin.If(s => s.obj.version >= 2, {
 			height:				s16,
 			cap_height:			s16,
 			default_char:		u16,
 			break_char:			u16,
 			max_context:		u16,
 	//v5
-			_: binary.If(s => s.obj.version >= 5, {
+			_: bin.If(s => s.obj.version >= 5, {
 				LowerOpticalPointSize:	u16,
 				UpperOpticalPointSize:	u16,
 			})
@@ -285,8 +285,8 @@ const head = {
 //@internal
 export function loadLocs(loca: Uint8Array, glyf: Uint8Array, indexToLocFormat: number) {
 	const locs = indexToLocFormat === 0
-		? [...binary.utils.to16(loca, true)].map(i => i * 2)
-		: Array.from(binary.utils.to32(loca, true));
+		? Array.from(bin.utils.as16(loca, true)).map(i => i * 2)
+		: Array.from(bin.utils.as32(loca, true));
 
 	return locs.slice(0, -1).map((loc: number, i: number) => glyf.subarray(loc, locs[i + 1]));
 }
@@ -308,7 +308,7 @@ const MetricsHead = {
 	caretSlopeRise:			s16,	//used to calculate the slope of the caret (rise/run) set to 1 for vertical caret
 	caretSlopeRun:			s16,	//0 for vertical
 	caretOffset:			s16,	//set value to 0 for non-slanted fonts
-	reserved:				binary.ArrayType(4, s16),			//set value to 0
+	reserved:				bin.ArrayType(4, s16),			//set value to 0
 	metricDataFormat:		s16,	//0 for current format
 	numOfLongMetrics:		u16,	//number of advance widths in metrics table
 };
@@ -323,10 +323,10 @@ interface Metrics {
 
 //@internal
 export function loadMetrics(data: Uint8Array, numGlyphs: number, numMetrics: number): Metrics {
-	const	hfile	= new binary.stream(data);
+	const	hfile	= new bin.stream(data);
 	return {
-		metrics:	binary.readn(hfile, {advance: u16, bearing: s16}, numMetrics),
-		bearing:	binary.readn(hfile, s16, numGlyphs - numMetrics)
+		metrics:	bin.readn(hfile, {advance: u16, bearing: s16}, numMetrics),
+		bearing:	bin.readn(hfile, s16, numGlyphs - numMetrics)
 	};
 }
 
@@ -337,7 +337,7 @@ export function loadMetrics(data: Uint8Array, numGlyphs: number, numMetrics: num
 const maxp = {
 	version:				u32,	//0x00010000 (1.0)
 	numGlyphs:				u16,	//the number of glyphs in the font
-	_: binary.If(s => s.obj.version >= 0x00010000, {
+	_: bin.If(s => s.obj.version >= 0x00010000, {
 		maxPoints:				u16,	//points in non-compound glyph
 		maxContours:			u16,	//contours in non-compound glyph
 		maxComponentPoints:		u16,	//points in compound glyph
@@ -392,28 +392,30 @@ const NameRecord = {
 	offset:			u16,	//Name string offset in bytes from stringOffset.
 };
 
-export class name extends binary.ReadClass({
+export class name extends bin.ReadClass({
 	format:			u16,	//Format selector. Set to 0.
 	count:			u16,	//The number of nameRecords in this name table.
 	stringOffset:	u16,	//Offset in bytes to the beginning of the name character strings.
 }) {
 	names:	string[] = [];
 
-	constructor(file: binary.stream) {
+	constructor(file: bin.stream) {
 		super(file);
-		const names	= binary.readn(file, NameRecord, this.count);
+		const names	= bin.readn(file, NameRecord, this.count);
 		for (const r of names) {
 			const i = r.nameID;
 			switch (r.platformID) {
 				case PLATFORM.UNICODE:
 					break;
 				case PLATFORM.MACINTOSH:
-					this.names[i] = binary.utils.decodeText(file.buffer_at(this.stringOffset + r.offset, r.length));
+					//this.names[i] = bin.utils.decodeText(file.buffer_at(this.stringOffset + r.offset, r.length));
+					this.names[i] = bin.read(file, bin.OffsetType(this.stringOffset + r.offset, bin.StringType(r.length)));
 					break;
 				case PLATFORM.WINDOWS:
 					switch (r.encodingID) {
 						case ENCODING.WIN_UCS2:
-							this.names[i] = binary.utils.decodeText(file.buffer_at(this.stringOffset + r.offset, r.length), 'utf16be');
+							//this.names[i] = bin.utils.decodeText(file.buffer_at(this.stringOffset + r.offset, r.length), 'utf16be');
+							this.names[i] = bin.read(file, bin.OffsetType(this.stringOffset + r.offset, bin.StringType(r.length, 'utf16be')));
 							break;
 					};
 					break;
@@ -445,17 +447,17 @@ const cmap_format_header2 = {
 	language:	u32,	//Language code for this encoding subtable, or zero if language-independent
 };
 
-class cmapByteEncoding extends binary.Class({...cmap_format_header1,
-	glyphs:	binary.ArrayType(256, u8),	//An array that maps character codes to glyph index values
+class cmapByteEncoding extends bin.Class({...cmap_format_header1,
+	glyphs:	bin.ArrayType(256, u8),	//An array that maps character codes to glyph index values
 }) implements cmapTable {
 	map() {
 		return this.glyphs;
 	}
 }
 
-class cmapHighByteTable extends binary.Class({...cmap_format_header1,
-	subHeaderKeys:	binary.ArrayType(256, u16),		//Array that maps high bytes to subHeaders: value is index * 8
-	data:		binary.Remainder,
+class cmapHighByteTable extends bin.Class({...cmap_format_header1,
+	subHeaderKeys:	bin.ArrayType(256, u16),		//Array that maps high bytes to subHeaders: value is index * 8
+	data:		bin.Remainder,
 }) implements cmapTable {
 	map() {
 	//subHeaders:		binary.RemainingArrayType({
@@ -467,14 +469,14 @@ class cmapHighByteTable extends binary.Class({...cmap_format_header1,
 		const map: number[] = [];
 		for (let i = 0; i < 256; i++) {
 			const	offset	= this.subHeaderKeys[i] + 256 * 2;
-			const	sub		= binary.read(new binary.stream(this.data.slice(offset)), {
+			const	sub		= bin.read(new bin.stream(this.data.slice(offset)), {
 				start:	u16,
 				count:	u16,
 				delta:	s16,
 				range:	u16,
 			});
 			const	coffset	= i * 256 + sub.start;
-			const	glyphs	= binary.utils.to16(this.data.slice(offset + sub.range, sub.count * 2), true);
+			const	glyphs	= bin.utils.as16(this.data.slice(offset + sub.range, sub.count * 2), true);
 			for (let c = 0; c < sub.count; c++)
 				map[c + coffset] = (glyphs[c] + sub.delta) & 0xffff;
 		}
@@ -482,12 +484,12 @@ class cmapHighByteTable extends binary.Class({...cmap_format_header1,
 	}
 };
 
-class cmapSegmentDelta extends binary.Class({...cmap_format_header1,
+class cmapSegmentDelta extends bin.Class({...cmap_format_header1,
 	segCountX2: 	u16,			//2 * segCount
 	searchRange: 	u16,			//2 * (2**FLOOR(log2(segCount)))
 	entrySelector: 	u16,			//log2(searchRange/2)
 	rangeShift: 	u16,			//(2 * segCount) - searchRange
-	endCode: 		binary.RemainingArrayType(u16),			//Ending character code for each segment, last = 0xFFFF.
+	endCode: 		bin.RemainingArrayType(u16),			//Ending character code for each segment, last = 0xFFFF.
 }) implements cmapTable {
 /*
 	u16	endCode[segCount];			//Ending character code for each segment, last = 0xFFFF.
@@ -520,9 +522,9 @@ class cmapSegmentDelta extends binary.Class({...cmap_format_header1,
 	}
 };
 
-class cmapTrimmedMapping extends binary.Class({...cmap_format_header1,
+class cmapTrimmedMapping extends bin.Class({...cmap_format_header1,
 	start:			u16,	//First character code of subrange
-	glyphs:			binary.ArrayType(u16, u16),	//Array of glyph index values for character codes in the range
+	glyphs:			bin.ArrayType(u16, u16),	//Array of glyph index values for character codes in the range
 }) implements cmapTable {
 	map() {
 		const map: number[] = [];
@@ -531,9 +533,9 @@ class cmapTrimmedMapping extends binary.Class({...cmap_format_header1,
 	}
 }
 
-class cmapMixed1632 extends binary.Class({...cmap_format_header2,
-	is32:		binary.ArrayType(8192, u8),			//Tightly packed array of bits (8K bytes total) indicating whether the particular 16-bit (index) value is the start of a 32-bit character code
-	groups:		binary.ArrayType(u32, cmapGroup),
+class cmapMixed1632 extends bin.Class({...cmap_format_header2,
+	is32:		bin.ArrayType(8192, u8),			//Tightly packed array of bits (8K bytes total) indicating whether the particular 16-bit (index) value is the start of a 32-bit character code
+	groups:		bin.ArrayType(u32, cmapGroup),
 }) implements cmapTable {
 	//bool		is32bit(uint16 c)	const	{ return is32[c / 8] & (1 << (~c & 7)); }
 	map() {
@@ -542,9 +544,9 @@ class cmapMixed1632 extends binary.Class({...cmap_format_header2,
 	}
 }
 
-class cmapTrimmedArray extends binary.Class({...cmap_format_header2,
+class cmapTrimmedArray extends bin.Class({...cmap_format_header2,
 	start:	u32,	//First character code covered
-	glyphs:	binary.ArrayType(u32, u16),	//Array of glyph indices for the character codes covered
+	glyphs:	bin.ArrayType(u32, u16),	//Array of glyph indices for the character codes covered
 }) implements cmapTable {
 	map() {
 		const map: number[] = [];
@@ -553,8 +555,8 @@ class cmapTrimmedArray extends binary.Class({...cmap_format_header2,
 	}
 }
 
-class cmapSegmented extends binary.Class({...cmap_format_header2,
-	groups:	binary.ArrayType(u32, cmapGroup),
+class cmapSegmented extends bin.Class({...cmap_format_header2,
+	groups:	bin.ArrayType(u32, cmapGroup),
 }) implements cmapTable {
 	map() {
 		const map: number[] = [];
@@ -567,8 +569,8 @@ class cmapSegmented extends binary.Class({...cmap_format_header2,
 	}
 }
 
-class cmapManyToOne extends binary.Class({...cmap_format_header2,
-	groups:	binary.ArrayType(u32, cmapGroup),
+class cmapManyToOne extends bin.Class({...cmap_format_header2,
+	groups:	bin.ArrayType(u32, cmapGroup),
 }) implements cmapTable {
 	map() {
 		const map: number[] = [];
@@ -580,19 +582,19 @@ class cmapManyToOne extends binary.Class({...cmap_format_header2,
 	}
 }
 
-class cmapVariationSeq extends binary.Class({
+class cmapVariationSeq extends bin.Class({
 	length:	u32,
-	variations:	binary.ArrayType(u32, {
+	variations:	bin.ArrayType(u32, {
 		selector:	u24,
-		default_uvs:		binary.MaybeOffsetType(u32, {
-			ranges:		binary.ArrayType(u32, binary.as(u32, binary.BitFields({startUnicodeValue: 24, additionalCount: 8})))
+		default_uvs:		bin.MaybeOffsetType(u32, {
+			ranges:		bin.ArrayType(u32, bin.as(u32, bin.BitFields({startUnicodeValue: 24, additionalCount: 8})))
 		}),
-		non_default_uvs:	binary.MaybeOffsetType(u32, {
-			mappings:	binary.ArrayType(u32, {unicodeValue: u24, glyphID: u16})
+		non_default_uvs:	bin.MaybeOffsetType(u32, {
+			mappings:	bin.ArrayType(u32, {unicodeValue: u24, glyphID: u16})
 		}),
 	}),
 }) implements cmapTable {
-	constructor(s: binary.stream) {
+	constructor(s: bin.stream) {
 		super(s);
 	}
 	map() {
@@ -603,10 +605,10 @@ class cmapVariationSeq extends binary.Class({
 
 const cmap = {
 	ver:	u16,	//0
-	tables:	binary.ArrayType(u16, {
+	tables:	bin.ArrayType(u16, {
 		platform:	u16,
 		encoding:	u16,
-		data:		as<cmapTable>(binary.OffsetType(u32, binary.Switch(u16, {
+		data:		as<cmapTable>(bin.OffsetType(u32, bin.Switch(u16, {
 			0: 	cmapByteEncoding,
 			2: 	cmapHighByteTable,
 			4: 	cmapSegmentDelta,
@@ -631,7 +633,7 @@ enum gaspBehavior {
 
 const gasp = {
 	version:	u16,	//Version number (set to 0)
-	entries:	binary.ArrayType(u16, {	//Sorted by ppem
+	entries:	bin.ArrayType(u16, {	//Sorted by ppem
 		mac_ppem: u16,	//Upper limit of range, in PPEM
 		behavior: as<gaspBehavior>(u16),	//Flags describing desired rasterizer behavior.
 	})
@@ -794,7 +796,7 @@ class Instructions extends Uint8Array {
 
 
 //@internal
-export function readComposite(file: binary.stream) {
+export function readComposite(file: bin.stream) {
 	const entryType = {
 		flags: u16,
 		index: u16,
@@ -803,25 +805,25 @@ export function readComposite(file: binary.stream) {
 	const refs: glyphRef[] = [];
 	let all_flags = 0;
 	for (;;) {
-		const	entry	= binary.read(file, entryType);
+		const	entry	= bin.read(file, entryType);
 		const	flags	= entry.flags;
 		all_flags	|= flags;
 
 		const mat = float2x3.identity();
 		if (flags & COMPOUND.ARG12_WORDS) {
-			mat.z = float2(binary.read(file, fixed16), binary.read(file, fixed16));
+			mat.z = float2(bin.read(file, fixed16), bin.read(file, fixed16));
 		} else {
-			mat.z = float2(binary.read(file, fixed8), binary.read(file, fixed8));
+			mat.z = float2(bin.read(file, fixed8), bin.read(file, fixed8));
 		}
 
 		if (flags & COMPOUND.HAVE_SCALE) {
-			mat.x.x = mat.y.y = binary.read(file, fixed16);
+			mat.x.x = mat.y.y = bin.read(file, fixed16);
 		} else if (flags & COMPOUND.X_AND_Y_SCALE) {
-			mat.x.x = binary.read(file, fixed16);
-			mat.y.y = binary.read(file, fixed16);
+			mat.x.x = bin.read(file, fixed16);
+			mat.y.y = bin.read(file, fixed16);
 		} else if (flags & COMPOUND.TWO_BY_TWO) {
-			mat.x = float2(binary.read(file, fixed16), binary.read(file, fixed16));
-			mat.y = float2(binary.read(file, fixed16), binary.read(file, fixed16));
+			mat.x = float2(bin.read(file, fixed16), bin.read(file, fixed16));
+			mat.y = float2(bin.read(file, fixed16), bin.read(file, fixed16));
 		}
 
 		refs.push({glyph: entry.index, mat});
@@ -831,7 +833,7 @@ export function readComposite(file: binary.stream) {
 	return {refs, have_instructions: !!(all_flags & COMPOUND.HAVE_INSTRUCTIONS)};
 }
 
-class GlyphReader extends binary.ReadClass({
+class GlyphReader extends bin.ReadClass({
 	num_contours:	s16,
 	min:			vec2(s16),
 	max:			vec2(s16),
@@ -840,34 +842,34 @@ class GlyphReader extends binary.ReadClass({
 	refs?:			glyphRef[];
 	instructions?:	Instructions;
 
-	constructor(file: binary.stream) {
+	constructor(file: bin.stream) {
 		super(file);
 
 		if (this.num_contours < 0) {
 			const {refs, have_instructions} = readComposite(file);
 			this.refs = refs;
 			if (have_instructions)
-				this.instructions	= binary.read(file, binary.Buffer(u16)) as Instructions;
+				this.instructions	= bin.read(file, bin.Buffer(u16)) as Instructions;
 
 		} else {
-			const end_pts		= binary.readn(file, u16, this.num_contours);
-			this.instructions	= binary.read(file, binary.Buffer(u16)) as Instructions;
+			const end_pts		= bin.readn(file, u16, this.num_contours);
+			this.instructions	= bin.read(file, bin.Buffer(u16)) as Instructions;
 			const npts			= end_pts[this.num_contours - 1] + 1;
 
 			const flags: number[] = [];
 			for (let i = 0; i < npts; ++i) {
-				const	f = binary.read(file, binary.UINT8);
+				const	f = bin.read(file, bin.UINT8);
 				flags[i] = f;
 				if (f & SIMPLE.REPEAT) {
-					for (let n = binary.read(file, binary.UINT8); n--;)
+					for (let n = bin.read(file, bin.UINT8); n--;)
 						flags[++i] = f;
 				}
 			}
 			
 			function getDelta(SHORT: boolean, SAMEPOS: boolean) {
 				return SHORT
-					? binary.read(file, u8) * (SAMEPOS ? 1 : -1)
-					: SAMEPOS ? 0 : binary.read(file, s16);
+					? bin.read(file, u8) * (SAMEPOS ? 1 : -1)
+					: SAMEPOS ? 0 : bin.read(file, s16);
 			}
 
 
@@ -907,14 +909,14 @@ class GlyphReader extends binary.ReadClass({
 
 const sbix = {
 	version:	u16,	//1
-	flags:		binary.asEnum(u16, {DRAW_OUTLINES: 1 << 1}),
-	strikes:	binary.ArrayType(u32, binary.OffsetType(u32, {
+	flags:		bin.asEnum(u16, {DRAW_OUTLINES: 1 << 1}),
+	strikes:	bin.ArrayType(u32, bin.OffsetType(u32, {
 		ppem:	u16,							//The PPEM size for which this strike was designed.
 		ppi:	u16,							//The device pixel density (in PPI) for which this strike was designed. (E.g., 96 PPI, 192 PPI.)
-		glyphs: binary.RemainingArrayType(as<GlyphImage>(binary.OffsetType(u32, {
+		glyphs: bin.RemainingArrayType(as<GlyphImage>(bin.OffsetType(u32, {
 			originOffset:	vec2(s16),			//The position of the left edge of the bitmap graphic in relation to the glyph design space origin.
 			type:			TAG,				//Indicates the format of the embedded graphic data: one of 'jpg ', 'png ' or 'tiff', or 'dupe' (which indicates data is a uint16be glyphid)
-			data:			binary.Remainder,	//The actual embedded graphic data. The total length is inferred from sequential entries in the glyphDataOffsets array and the fixed size (8 bytes) of the preceding fields.
+			data:			bin.Remainder,	//The actual embedded graphic data. The total length is inferred from sequential entries in the glyphDataOffsets array and the fixed size (8 bytes) of the preceding fields.
 		}))),
 	})),
 };
@@ -946,41 +948,41 @@ interface EBDTFormat {
 const SbitBitmapFormat = {
 	1: {  // small metrics, byte-aligned data
 		metrics: SmallGlyphMetrics,
-		data: binary.Remainder,
-		type: binary.Const('byte'),
+		data: bin.Remainder,
+		type: bin.Const('byte'),
 	},
 	2: {  // small metrics, bit-aligned data
 		metrics: SmallGlyphMetrics,
-		data: binary.Remainder,
-		type: binary.Const('bit '),
+		data: bin.Remainder,
+		type: bin.Const('bit '),
 	},
 	3: {  // (obsolete)
 		metrics: BigGlyphMetrics,
-		data: binary.Remainder,
+		data: bin.Remainder,
 	},
 	4: {  // (obsolete)
 		metrics: BigGlyphMetrics,
-		data: binary.Remainder,
-		type: binary.Const('zlib '),
+		data: bin.Remainder,
+		type: bin.Const('zlib '),
 	},
 	5: {  // metrics in EBLC, bit-aligned image data only
-		data: binary.Remainder,
-		type: binary.Const('bit '),
+		data: bin.Remainder,
+		type: bin.Const('bit '),
 	},
 	6: {  // big metrics, byte-aligned data
 		metrics: BigGlyphMetrics,
-		data: binary.Remainder,
-		type: binary.Const('byte'),
+		data: bin.Remainder,
+		type: bin.Const('byte'),
 	},
 	7: {  // big metrics, bit-aligned data
 		metrics: BigGlyphMetrics,
-		data: binary.Remainder,
-		type: binary.Const('bit '),
+		data: bin.Remainder,
+		type: bin.Const('bit '),
 	},
 	8: {  // small metrics, component data
 		metrics: SmallGlyphMetrics,
-		type: binary.Const('comp'),
-		components: binary.ArrayType(u16, {
+		type: bin.Const('comp'),
+		components: bin.ArrayType(u16, {
 			glyphID: u16,
 			xOffset: s8,
 			yOffset: s8,
@@ -988,8 +990,8 @@ const SbitBitmapFormat = {
 	},
 	9: {  // big metrics, component data
 		metrics: BigGlyphMetrics,
-		type: binary.Const('comp'),
-		components: binary.ArrayType(u16, {
+		type: bin.Const('comp'),
+		components: bin.ArrayType(u16, {
 			glyphID: u16,
 			xOffset: s8,
 			yOffset: s8,
@@ -997,22 +999,22 @@ const SbitBitmapFormat = {
 	},
 	17: { // small metrics, PNG image data
 		metrics: SmallGlyphMetrics,
-		data: binary.Remainder,
-		type: binary.Const('png '),
+		data: bin.Remainder,
+		type: bin.Const('png '),
 	},
 	18: { // big metrics, PNG image data
 		metrics: BigGlyphMetrics,
-		data: binary.Remainder,
-		type: binary.Const('png '),
+		data: bin.Remainder,
+		type: bin.Const('png '),
 	},
 	19: { // metrics in EBLC, PNG image data only
-		data: binary.Remainder,
-		type: binary.Const('png '),
+		data: bin.Remainder,
+		type: bin.Const('png '),
 	},
 };
 
 
-abstract class EBLCLookup extends binary.Class({
+abstract class EBLCLookup extends bin.Class({
 	imageFormat: 		u16,
 	imageDataOffset: 	u32,
 }) {
@@ -1022,15 +1024,15 @@ abstract class EBLCLookup extends binary.Class({
 const EBLC_SubTable = {
 	firstGlyphIndex: 	u16,
 	lastGlyphIndex: 	u16,
-	sub: 	as<EBLCLookup>(binary.OffsetType(u32, binary.Switch(u16, {
-		1: class X extends binary.Extend(EBLCLookup, {
-			offsets:			binary.ArrayType(s => s.obj.obj.lastGlyphIndex - s.obj.obj.firstGlyphIndex + 2, u32)
+	sub: 	as<EBLCLookup>(bin.OffsetType(u32, bin.Switch(u16, {
+		1: class extends bin.Extend(EBLCLookup, {
+			offsets:			bin.ArrayType(s => s.obj.obj.lastGlyphIndex - s.obj.obj.firstGlyphIndex + 2, u32)
 		}) {
 			getData(data: Uint8Array, id: number): any {
 				return {data: data.subarray(this.offsets[id], this.offsets[id + 1])};
 			}
 		},
-		2: class extends binary.Extend(EBLCLookup, {
+		2: class extends bin.Extend(EBLCLookup, {
 			imageSize:			u32,
 			metrics:			BigGlyphMetrics,
 		}) {
@@ -1038,25 +1040,25 @@ const EBLC_SubTable = {
 				return {data: data.subarray(this.imageSize * id, this.imageSize * (id + 1)), metrics: this.metrics};
 			}
 		},
-		3: class extends binary.Extend(EBLCLookup, {
-			offsets:			binary.ArrayType(s => s.obj.obj.lastGlyphIndex - s.obj.obj.firstGlyphIndex + 2, u16)
+		3: class extends bin.Extend(EBLCLookup, {
+			offsets:			bin.ArrayType(s => s.obj.obj.lastGlyphIndex - s.obj.obj.firstGlyphIndex + 2, u16)
 		}) {
 			getData(data: Uint8Array, id: number): any {
 				return {data: data.subarray(this.offsets[id], this.offsets[id + 1])};
 			}
 		},
-		4: class extends binary.Extend(EBLCLookup, {
-			glyphIds:			binary.ArrayType(u32, {glyphID:	u16, sbitOffset: u16})
+		4: class extends bin.Extend(EBLCLookup, {
+			glyphIds:			bin.ArrayType(u32, {glyphID:	u16, sbitOffset: u16})
 		}) {
 			getData(data: Uint8Array, id: number): any {
 				const i = this.glyphIds.find(i => i.glyphID === id);
 				return {data: data.subarray( + (i?.sbitOffset ?? 0))};
 			}
 		},
-		5: class extends binary.Extend(EBLCLookup, {
+		5: class extends bin.Extend(EBLCLookup, {
 			imageSize:			u32,
 			metrics: 			BigGlyphMetrics,
-			glyphIds:			binary.ArrayType(u32, u16),
+			glyphIds:			bin.ArrayType(u32, u16),
 		}) {
 			getData(data: Uint8Array, id: number): any {
 				const i = this.glyphIds.findIndex(i => i === id);
@@ -1066,7 +1068,7 @@ const EBLC_SubTable = {
 	})))
 };
 
-const SbitLineMetrics = binary.Struct({
+const SbitLineMetrics = bin.Struct({
 	ascender: 				s8,	// Distance in pixels from baseline to top of line
 	descender: 				s8,	// Distance in pixels from baseline to bottom of line
 	widthMax: 				u8,	// Width of widest bitmap in pixels
@@ -1081,8 +1083,8 @@ const SbitLineMetrics = binary.Struct({
 	pad2: 					s8,	// Padding - set to 0
 });
 
-class EBLCTable extends binary.Class({
-	indexSubTableArrayOffset: 	binary.OffsetType(u32, binary.Remainder),// Offset to index subtable from beginning of EBLC
+class EBLCTable extends bin.Class({
+	indexSubTableArrayOffset: 	bin.OffsetType(u32, bin.Remainder),// Offset to index subtable from beginning of EBLC
 	indexTablesSize: 			u32,				// Number of bytes in corresponding index subtables and array
 	numberOfIndexSubTables: 	u32,				// Number of index subtables
 	colorRef: 					u32,				// Not used; set to 0
@@ -1096,9 +1098,9 @@ class EBLCTable extends binary.Class({
 	flags: 						u8,					// Vertical or horizontal metrics
 }) {
 	subs;
-	constructor(s: binary._stream) {
+	constructor(s: bin._stream) {
 		super(s);
-		this.subs = binary.readn(new binary.stream(this.indexSubTableArrayOffset), EBLC_SubTable, this.numberOfIndexSubTables);
+		this.subs = bin.readn(new bin.stream(this.indexSubTableArrayOffset), EBLC_SubTable, this.numberOfIndexSubTables);
 	}
 
 	getGlyph(id: number, data: Uint8Array): GlyphImage | undefined {
@@ -1106,7 +1108,7 @@ class EBLCTable extends binary.Class({
 			if (id <= i.lastGlyphIndex) {
 				const g		= i.sub.getData(data.subarray(i.sub.imageDataOffset), id - i.firstGlyphIndex);
 				if (g.data.length) {
-					const g1 = binary.read(new binary.stream(g.data), SbitBitmapFormat[i.sub.imageFormat as keyof typeof SbitBitmapFormat]) as EBDTFormat;
+					const g1 = bin.read(new bin.stream(g.data), SbitBitmapFormat[i.sub.imageFormat as keyof typeof SbitBitmapFormat]) as EBDTFormat;
 					if (g1) {
 						const metrics = g1.metrics || g.metrics;
 						return {
@@ -1123,12 +1125,12 @@ class EBLCTable extends binary.Class({
 
 const EBLC = {
 	version: u32,
-	bitmapSizes: binary.ArrayType(u32, EBLCTable),
+	bitmapSizes: bin.ArrayType(u32, EBLCTable),
 };
 
 const EBDT = {
 	version: u32,					// Version number of the CBDT table (initially = 0x00020000)
-	data: binary.Remainder,			// Bitmap data for various formats
+	data: bin.Remainder,			// Bitmap data for various formats
 };
 
 //-----------------------------------------------------------------------------
@@ -1137,10 +1139,10 @@ const EBDT = {
 
 const SVG = {
 	version:	u16,//	Table version (starting at 0). Set to 0.
-	documents:	binary.OffsetType(u32, binary.ArrayType(u16, {
+	documents:	bin.OffsetType(u32, bin.ArrayType(u16, {
 		startGlyphID:	u16,
 		endGlyphID:		u16,
-		doc:			binary.OffsetType(u32, binary.Remainder),
+		doc:			bin.OffsetType(u32, bin.Remainder),
 		doc_length: 	u32,
 	
 	})),
@@ -1151,13 +1153,13 @@ const SVG = {
 //	GSUB + GPOS + GDEF Common	(OTF)
 //-----------------------------------------------------------------------------
 
-class Coverage extends binary.Class({coverage: binary.Switch(u16, {
+class Coverage extends bin.Class({coverage: bin.Switch(u16, {
 	1: {
-		glyphs:	binary.ArrayType(u16, u16),
+		glyphs:	bin.ArrayType(u16, u16),
 	},
 	
 	2: {
-		ranges:	binary.ArrayType(u16, {
+		ranges:	bin.ArrayType(u16, {
 			start:				u16,	//First glyph ID in the range
 			end:				u16,	//Last glyph ID in the range
 			startCoverageIndex:	u16,	//Coverage Index of first glyph ID in range
@@ -1207,53 +1209,53 @@ function LookupList2<S, T extends Record<number, Record<number, binary.TypeT<S>>
 */
 
 
-function LookupList<A>(tables: Record<number, Record<number, binary.Type>>) {
-	return binary.ArrayType(u16, binary.OffsetType(u16, {
+function LookupList<A>(tables: Record<number, Record<number, bin.Type>>) {
+	return bin.ArrayType(u16, bin.OffsetType(u16, {
 		type:	u16,
 		flag:	as<LookupFlag>(u16),
-		table:	as<Record<number, A>>(binary.Switch(s => s.obj.type, Object.fromEntries(Object.entries(tables).map(([k, v]) => [k, binary.ArrayType(u16, binary.OffsetType(u16, binary.Switch(u16, v)))])))),
+		table:	as<Record<number, A>>(bin.Switch(s => s.obj.type, Object.fromEntries(Object.entries(tables).map(([k, v]) => [k, bin.ArrayType(u16, bin.OffsetType(u16, bin.Switch(u16, v)))])))),
 		//u16	markFilteringSet;	//Index (base 0) into GDEF mark glyph sets structure. This field is only present if the USE_MARK_FILTERING_SET lookup flag is set.
 	}));
 }
 
-const FeatureList = binary.ArrayType(u16, {
+const FeatureList = bin.ArrayType(u16, {
 	tag:		TAG,
-	feature:	binary.OffsetType(u16, {
-		params:		binary.OffsetType(u16, binary.Remainder),
-		indices:	binary.ArrayType(u16, u16),
+	feature:	bin.OffsetType(u16, {
+		params:		bin.OffsetType(u16, bin.Remainder),
+		indices:	bin.ArrayType(u16, u16),
 	}),
 });
 
 const LangSys = {
-	lookupOrderOffset:		binary.OffsetType(u16, binary.Remainder),		//= NULL (reserved for an offset to a reordering table)
+	lookupOrderOffset:		bin.OffsetType(u16, bin.Remainder),		//= NULL (reserved for an offset to a reordering table)
 	requiredFeatureIndex:	u16,	//Index of a feature required for this language system; if no required features = 0xFFFF
-	featureIndices:			binary.ArrayType(u16, u16),
+	featureIndices:			bin.ArrayType(u16, u16),
 };
 
 const Script = {
-	defaultLangSys:		binary.OffsetType(u16, LangSys),
-	langSysRecords:		binary.ArrayType(u16, {
+	defaultLangSys:		bin.OffsetType(u16, LangSys),
+	langSysRecords:		bin.ArrayType(u16, {
 		tag:		TAG,
-		langSys:	binary.OffsetType(u16, LangSys),
+		langSys:	bin.OffsetType(u16, LangSys),
 	}),
 };
 
-const ScriptList = binary.ArrayType(u16, {
+const ScriptList = bin.ArrayType(u16, {
 	tag:	TAG,
-	script:	binary.OffsetType(u16, Script),
+	script:	bin.OffsetType(u16, Script),
 });
 
 //-------------------------------------
 
 const ClassDef = {
 	format:	u16,
-	data: binary.Switch(s => s.obj.format, {
+	data: bin.Switch(s => s.obj.format, {
 		1: {
 			start:	u16,		//First glyph ID of the classValueArray
-			values:	binary.ArrayType(u16, u16),
+			values:	bin.ArrayType(u16, u16),
 		},
 		2: {
-			ranges: binary.ArrayType(u16, {
+			ranges: bin.ArrayType(u16, {
 				start:	u16,	//First glyph ID in the range
 				end:	u16,	//Last glyph ID in the range
 				Class:	u16,	//Applied to all glyphs in the range
@@ -1269,37 +1271,37 @@ const SequenceLookup = {
 	lookupListIndex:	u16,	//Index (zero-based) into the LookupList
 };
 
-const ClassSequenceRuleSet = binary.ArrayType(u16, binary.OffsetType(u16, {
+const ClassSequenceRuleSet = bin.ArrayType(u16, bin.OffsetType(u16, {
 	glyphCount:			u16,	//Number of glyphs in the input glyph sequence
 	seqLookupCount:		u16,	//Number of SequenceLookupRecords
-	input:				binary.ArrayType(s => s.obj.glyphCount - 1, u16),	//Array of input glyph IDs'starting with the second glyph
-	seqLookup:			binary.ArrayType(s => s.obj.seqLookupCount, SequenceLookup),
+	input:				bin.ArrayType(s => s.obj.glyphCount - 1, u16),	//Array of input glyph IDs'starting with the second glyph
+	seqLookup:			bin.ArrayType(s => s.obj.seqLookupCount, SequenceLookup),
 }));
 
 const SequenceContext = {
 	1: {
-		coverage:	binary.OffsetType(u16, Coverage),
-		rule_sets:	binary.ArrayType(u16, binary.OffsetType(u16, ClassSequenceRuleSet)),
+		coverage:	bin.OffsetType(u16, Coverage),
+		rule_sets:	bin.ArrayType(u16, bin.OffsetType(u16, ClassSequenceRuleSet)),
 	},
 	
 	2: {
-		coverage:	binary.OffsetType(u16, Coverage),						
-		class_defs:	binary.OffsetType(u16, ClassDef),						
-		rule_sets:	binary.ArrayType(u16, binary.OffsetType(u16, ClassSequenceRuleSet)),
+		coverage:	bin.OffsetType(u16, Coverage),						
+		class_defs:	bin.OffsetType(u16, ClassDef),						
+		rule_sets:	bin.ArrayType(u16, bin.OffsetType(u16, ClassSequenceRuleSet)),
 	},
 	
 	3: {
 		glyphCount:	u16,
 		seqLookupCount:	u16,
-		coverages:	binary.ArrayType(s => s.obj.glyphCount, binary.OffsetType(u16, Coverage)),
-		seqLookup:	binary.ArrayType(s => s.obj.seqLookupCount, SequenceLookup),
+		coverages:	bin.ArrayType(s => s.obj.glyphCount, bin.OffsetType(u16, Coverage)),
+		seqLookup:	bin.ArrayType(s => s.obj.seqLookupCount, SequenceLookup),
 	}
 };
 
 //-------------------------------------
 
 const ChainedSequenceRule = {
-	_backtrack:	binary.ArrayType(u16, u16),
+	_backtrack:	bin.ArrayType(u16, u16),
 	//u16	backtrackGlyphCount;	//Number of glyphs in the backtrack sequence
 	//u16	backtrackSequence;//[backtrackGlyphCount];	//Array of backtrack glyph IDs
 	//u16	inputGlyphCount;	//Number of glyphs in the input sequence
@@ -1315,24 +1317,24 @@ const ChainedSequenceRule = {
 	//auto	seqLookup()	const	{ return ((table(u16, SequenceLookup)*)lookahead().end())->all(); }
 };
 
-const ChainedSequenceRuleSet = binary.ArrayType(u16, binary.OffsetType(u16, ChainedSequenceRule));
+const ChainedSequenceRuleSet = bin.ArrayType(u16, bin.OffsetType(u16, ChainedSequenceRule));
 
 const ChainedSequenceContext = {
 	1: {
-		coverage:	binary.OffsetType(u16, binary.Remainder),
-		rule_sets:	binary.ArrayType(u16, binary.OffsetType(u16, ChainedSequenceRuleSet)),
+		coverage:	bin.OffsetType(u16, bin.Remainder),
+		rule_sets:	bin.ArrayType(u16, bin.OffsetType(u16, ChainedSequenceRuleSet)),
 	},
 
 	2: {
-		coverage:	binary.OffsetType(u16, Coverage),
-		backtrack:	binary.OffsetType(u16, ClassDef),	//table containing backtrack sequence context, from beginning of ChainedSequenceContextFormat2 table
-		input:		binary.OffsetType(u16, ClassDef),	//table containing input sequence context, from beginning of ChainedSequenceContextFormat2 table
-		lookahead:	binary.OffsetType(u16, ClassDef),	//table containing lookahead sequence context, from beginning of ChainedSequenceContextFormat2 table
-		rule_sets:	binary.ArrayType(u16, binary.OffsetType(u16, ChainedSequenceRuleSet)),
+		coverage:	bin.OffsetType(u16, Coverage),
+		backtrack:	bin.OffsetType(u16, ClassDef),	//table containing backtrack sequence context, from beginning of ChainedSequenceContextFormat2 table
+		input:		bin.OffsetType(u16, ClassDef),	//table containing input sequence context, from beginning of ChainedSequenceContextFormat2 table
+		lookahead:	bin.OffsetType(u16, ClassDef),	//table containing lookahead sequence context, from beginning of ChainedSequenceContextFormat2 table
+		rule_sets:	bin.ArrayType(u16, bin.OffsetType(u16, ChainedSequenceRuleSet)),
 	},
 
 	3: {
-		_backtrack:	binary.ArrayType(u16, binary.OffsetType(u16, Coverage)),
+		_backtrack:	bin.ArrayType(u16, bin.OffsetType(u16, Coverage)),
 		//u16		backtrackGlyphCount;	//Number of glyphs in the backtrack sequence
 		//binary.OffsetType(u16, void),	backtrackCoverageOffsets;//[backtrackGlyphCount]	Array of offsets to coverage tables for the backtrack sequence
 		//u16		inputGlyphCount;	//Number of glyphs in the input sequence
@@ -1359,41 +1361,41 @@ interface Substitution {
 
 const GSUB = {
 	version:		u32,
-	scripts:		binary.OffsetType(u16, ScriptList),	
-	features:		binary.OffsetType(u16, FeatureList),
-	lookups:		binary.OffsetType(u16, LookupList<Substitution>({
+	scripts:		bin.OffsetType(u16, ScriptList),	
+	features:		bin.OffsetType(u16, FeatureList),
+	lookups:		bin.OffsetType(u16, LookupList<Substitution>({
 		1: {//SINGLE		= 1,	// Replace one glyph with one glyph
 			1:{//SINGLE1
-				coverage:	binary.OffsetType(u16, Coverage),
+				coverage:	bin.OffsetType(u16, Coverage),
 				delta:		s16,		//Add to original glyph ID to get substitute glyph ID
-				substitute:	binary.Const((id: number) => id)
+				substitute:	bin.Const((id: number) => id)
 			},
 			2:{//SINGLE2
-				coverage:	binary.OffsetType(u16, Coverage),
-				subs:		binary.ArrayType(u16, u16),	//	Array of substitute glyph IDs ' ordered by Coverage index
-				substitute:	binary.Const((id: number) => id)
+				coverage:	bin.OffsetType(u16, Coverage),
+				subs:		bin.ArrayType(u16, u16),	//	Array of substitute glyph IDs ' ordered by Coverage index
+				substitute:	bin.Const((id: number) => id)
 			},
 		},
 		2: {//MULTIPLE		= 2,	// Replace one glyph with more than one glyph
 			1:		{//MULTIPLE1
-				coverage:	binary.OffsetType(u16, Coverage),
-				sequences:	binary.ArrayType(u16, binary.OffsetType(u16, binary.ArrayType(u16,u16))),
-				substitute:	binary.Const((id: number) => id)
+				coverage:	bin.OffsetType(u16, Coverage),
+				sequences:	bin.ArrayType(u16, bin.OffsetType(u16, bin.ArrayType(u16,u16))),
+				substitute:	bin.Const((id: number) => id)
 			},
 		},
 		3: {//ALTERN		= 3,	// Replace one glyph with one of many glyphs
 			1: {//ALTERNATE1
-				coverage:	binary.OffsetType(u16, Coverage),
-				alternates:	binary.ArrayType(u16, binary.OffsetType(u16, binary.ArrayType(u16, u16))),
-				substitute:	binary.Const((id: number) => id)
+				coverage:	bin.OffsetType(u16, Coverage),
+				alternates:	bin.ArrayType(u16, bin.OffsetType(u16, bin.ArrayType(u16, u16))),
+				substitute:	bin.Const((id: number) => id)
 			},
 		},
 		4: {//LIGATURE		= 4,	// Replace multiple glyphs with one glyph
 			1: {//LIGATURE1
 				//struct Ligature		: LigatureGlyph, table(u16, u16) {};
-				coverage:	binary.OffsetType(u16, Coverage),
-				sets:		binary.ArrayType(u16, binary.OffsetType(u16, binary.ArrayType(u16, binary.OffsetType(u16, {ligature: u16})))),
-				substitute:	binary.Const((id: number) => id)
+				coverage:	bin.OffsetType(u16, Coverage),
+				sets:		bin.ArrayType(u16, bin.OffsetType(u16, bin.ArrayType(u16, bin.OffsetType(u16, {ligature: u16})))),
+				substitute:	bin.Const((id: number) => id)
 			},
 		},
 		5: //CONTEXTUAL	= 5,	// Replace one or more glyphs in context
@@ -1404,8 +1406,8 @@ const GSUB = {
 		//},
 		8: {//REVERSE		= 8,	// Applied in reverse order, replace single glyph in chaining context
 			1: {//REVERSE1
-				coverage:	binary.OffsetType(u16, Coverage),
-				_backtrack: binary.ArrayType(u16, binary.OffsetType(u16, binary.Remainder)),
+				coverage:	bin.OffsetType(u16, Coverage),
+				_backtrack: bin.ArrayType(u16, bin.OffsetType(u16, bin.Remainder)),
 				//u16	backtrackGlyphCount;	//Number of glyphs in the backtrack sequence.
 				//binary.OffsetType(u16, void),	backtrackCoverageOffsets;//[backtrackGlyphCount]	Array of offsets to coverage tables in backtrack sequence, in glyph sequence order.
 				//u16	lookaheadGlyphCount;	//Number of glyphs in lookahead sequence.
@@ -1417,12 +1419,12 @@ const GSUB = {
 				//auto	input()			const	{ return ((glyph_table*)backtrack().end())->all(); }
 				//auto	lookahead()		const	{ return ((glyph_table*)input().end())->all(); }
 				//auto	substitute()	const	{ return ((table(u16, u16)*)lookahead().end())->all(); }
-				substitute:	binary.Const((id: number) => id)
+				substitute:	bin.Const((id: number) => id)
 			},
 		},
 	})),
-	v1:	binary.Optional(s => s.obj.version >= 0x00010001 , {
-		variations:	binary.OffsetType(u32, binary.Remainder),
+	v1:	bin.Optional(s => s.obj.version >= 0x00010001 , {
+		variations:	bin.OffsetType(u32, bin.Remainder),
 	}),
 };
 
@@ -1444,21 +1446,21 @@ const enum ValueFormat {
 
 function ValueRecord(format: ValueFormat) {
 	return {
-		xPlacement:	binary.Optional(format & ValueFormat.X_PLACEMENT,			s16),	//Horizontal adjustment for placement, in design units.
-		yPlacement:	binary.Optional(format & ValueFormat.Y_PLACEMENT,			s16),	//Vertical adjustment for placement, in design units.
-		xAdvance:	binary.Optional(format & ValueFormat.X_ADVANCE, 			s16),	//Horizontal adjustment for advance, in design units ' only used for horizontal layout.
-		yAdvance:	binary.Optional(format & ValueFormat.Y_ADVANCE, 			s16),	//Vertical adjustment for advance, in design units ' only used for vertical layout.
-		xPlaDevice:	binary.Optional(format & ValueFormat.X_PLACEMENT_DEVICE,	binary.OffsetType(u16, binary.Remainder)),
-		yPlaDevice:	binary.Optional(format & ValueFormat.Y_PLACEMENT_DEVICE,	binary.OffsetType(u16, binary.Remainder)),
-		xAdvDevice:	binary.Optional(format & ValueFormat.X_ADVANCE_DEVICE,		binary.OffsetType(u16, binary.Remainder)),
-		yAdvDevice:	binary.Optional(format & ValueFormat.Y_ADVANCE_DEVICE,		binary.OffsetType(u16, binary.Remainder)),
+		xPlacement:	bin.Optional(format & ValueFormat.X_PLACEMENT,			s16),	//Horizontal adjustment for placement, in design units.
+		yPlacement:	bin.Optional(format & ValueFormat.Y_PLACEMENT,			s16),	//Vertical adjustment for placement, in design units.
+		xAdvance:	bin.Optional(format & ValueFormat.X_ADVANCE, 			s16),	//Horizontal adjustment for advance, in design units ' only used for horizontal layout.
+		yAdvance:	bin.Optional(format & ValueFormat.Y_ADVANCE, 			s16),	//Vertical adjustment for advance, in design units ' only used for vertical layout.
+		xPlaDevice:	bin.Optional(format & ValueFormat.X_PLACEMENT_DEVICE,	bin.OffsetType(u16, bin.Remainder)),
+		yPlaDevice:	bin.Optional(format & ValueFormat.Y_PLACEMENT_DEVICE,	bin.OffsetType(u16, bin.Remainder)),
+		xAdvDevice:	bin.Optional(format & ValueFormat.X_ADVANCE_DEVICE,		bin.OffsetType(u16, bin.Remainder)),
+		yAdvDevice:	bin.Optional(format & ValueFormat.Y_ADVANCE_DEVICE,		bin.OffsetType(u16, bin.Remainder)),
 	};
 }
-interface ValueRecord extends binary.ReadType<ReturnType<typeof ValueRecord>> {};
+interface ValueRecord extends bin.ReadType<ReturnType<typeof ValueRecord>> {};
 
 const Anchor = {
 	format: u16,
-	data: binary.Switch(s => s.obj.format, {
+	data: bin.Switch(s => s.obj.format, {
 		1: {//Anchor1
 			xCoordinate: 	s16,	//Horizontal value, in design units
 			yCoordinate: 	s16,	//Vertical value, in design units
@@ -1471,95 +1473,95 @@ const Anchor = {
 		3: {//Anchor3
 			xCoordinate:	s16,	//Horizontal value, in design units
 			yCoordinate:	s16,	//Vertical value, in design units
-			xDevice:		binary.OffsetType(u16, binary.Remainder),
-			yDevice:		binary.OffsetType(u16, binary.Remainder),
+			xDevice:		bin.OffsetType(u16, bin.Remainder),
+			yDevice:		bin.OffsetType(u16, bin.Remainder),
 		},
 	})
 };
 
 const MarkRecord = {
 	markClass:		u16,
-	markAnchor:		binary.OffsetType(u16, Anchor),
+	markAnchor:		bin.OffsetType(u16, Anchor),
 };
 
 interface Position {
 }
 const GPOS = {
 	vsersion:		u32,
-	scripts:		binary.OffsetType(u16, ScriptList),	
-	features:		binary.OffsetType(u16, FeatureList),
-	lookups:		binary.OffsetType(u16, LookupList<Position>({
+	scripts:		bin.OffsetType(u16, ScriptList),	
+	features:		bin.OffsetType(u16, FeatureList),
+	lookups:		bin.OffsetType(u16, LookupList<Position>({
 		1: {//	SINGLE			Adjust position of a single glyph
 			1:{//SINGLE1
-				coverage:		binary.OffsetType(u16, Coverage),
+				coverage:		bin.OffsetType(u16, Coverage),
 				valueFormat:	u16,		
-				valueRecord:	as<ValueRecord>(binary.FuncType(s => ValueRecord(s.obj.valueFormat))),
+				valueRecord:	as<ValueRecord>(bin.FuncType(s => ValueRecord(s.obj.valueFormat))),
 			},
 			2:{//SINGLE2
-				coverage:		binary.OffsetType(u16, Coverage),
+				coverage:		bin.OffsetType(u16, Coverage),
 				valueFormat:	u16,		
-				values:			binary.ArrayType(u16, as<ValueRecord>(binary.FuncType(s => ValueRecord(s.obj.valueFormat)))),
+				values:			bin.ArrayType(u16, as<ValueRecord>(bin.FuncType(s => ValueRecord(s.obj.valueFormat)))),
 			},
 		},
 		2: {//	PAIR			Adjust position of a pair of glyphs
 			1: {//PAIR1
-				coverage:		binary.OffsetType(u16, Coverage),
+				coverage:		bin.OffsetType(u16, Coverage),
 				valueFormat1:	u16,			//Defines the types of data in valueRecord1 ' for the first glyph in the pair (may be zero).
 				valueFormat2:	u16,			//Defines the types of data in valueRecord2 ' for the second glyph in the pair (may be zero).
-				pairSets:		binary.ArrayType(u16, binary.OffsetType(u16, binary.ArrayType(u16, {
+				pairSets:		bin.ArrayType(u16, bin.OffsetType(u16, bin.ArrayType(u16, {
 					secondGlyph:	u16,				//Glyph ID of second glyph in the pair (first glyph is listed in the Coverage table).
-					valueRecord1:	as<ValueRecord>(binary.FuncType(obj => ValueRecord(obj.obj.valueFormat1))),		//Positioning data for the first glyph in the pair.
-					valueRecord2:	as<ValueRecord>(binary.FuncType(obj => ValueRecord(obj.obj.valueFormat2))),		//Positioning data for the second glyph in the pair.
+					valueRecord1:	as<ValueRecord>(bin.FuncType(obj => ValueRecord(obj.obj.valueFormat1))),		//Positioning data for the first glyph in the pair.
+					valueRecord2:	as<ValueRecord>(bin.FuncType(obj => ValueRecord(obj.obj.valueFormat2))),		//Positioning data for the second glyph in the pair.
 				}))),
 			},
 			2: {//PAIR2
-				coverage:		binary.OffsetType(u16, Coverage),
+				coverage:		bin.OffsetType(u16, Coverage),
 				valueFormat1:	u16,	// for the first glyph of the pair (may be zero).
 				valueFormat2:	u16,	// for the second glyph of the pair (may be zero).
-				classDef1Offset:binary.OffsetType(u16, ClassDef),	//Offset to ClassDef table, from beginning of PairPos subtable ' for the first glyph of the pair.
-				classDef2Offset:binary.OffsetType(u16, ClassDef),	//Offset to ClassDef table, from beginning of PairPos subtable ' for the second glyph of the pair.
+				classDef1Offset:bin.OffsetType(u16, ClassDef),	//Offset to ClassDef table, from beginning of PairPos subtable ' for the first glyph of the pair.
+				classDef2Offset:bin.OffsetType(u16, ClassDef),	//Offset to ClassDef table, from beginning of PairPos subtable ' for the second glyph of the pair.
 				class1Count:	u16,	//Number of classes in classDef1 table ' includes Class 0.
 				class2Count:	u16,	//Number of classes in classDef2 table ' includes Class 0.
-				records:		binary.ArrayType(s => s.obj.class1Count * s.obj.class2Count, {
-					valueRecord1:	as<ValueRecord>(binary.FuncType(obj => ValueRecord(obj.obj.valueFormat1))),	//Positioning for first glyph ' empty if valueFormat1 = 0.
-					valueRecord2:	as<ValueRecord>(binary.FuncType(obj => ValueRecord(obj.obj.valueFormat2))),	//Positioning for second glyph ' empty if valueFormat2 = 0.
+				records:		bin.ArrayType(s => s.obj.class1Count * s.obj.class2Count, {
+					valueRecord1:	as<ValueRecord>(bin.FuncType(obj => ValueRecord(obj.obj.valueFormat1))),	//Positioning for first glyph ' empty if valueFormat1 = 0.
+					valueRecord2:	as<ValueRecord>(bin.FuncType(obj => ValueRecord(obj.obj.valueFormat2))),	//Positioning for second glyph ' empty if valueFormat2 = 0.
 				}),//	Array of Class1 records, ordered by classes in classDef1.
 			},
 		},
 		3: {//	CURSIVE			Attach cursive glyphs
 			1:{//CURSIVE1
-				coverage:	binary.OffsetType(u16, Coverage),
-				entryExits:	binary.ArrayType(u16, {
-					entryAnchor:	binary.OffsetType(u16, Anchor),
-					exitAnchor:		binary.OffsetType(u16, Anchor),
+				coverage:	bin.OffsetType(u16, Coverage),
+				entryExits:	bin.ArrayType(u16, {
+					entryAnchor:	bin.OffsetType(u16, Anchor),
+					exitAnchor:		bin.OffsetType(u16, Anchor),
 				}),
 			},
 		},
 		4: {//	MARK_TO_BASE	Attach a combining mark to a base glyph
 			1:{//MARK_TO_BASE1
-				markCoverage:	binary.OffsetType(u16, Coverage),
-				baseCoverage:	binary.OffsetType(u16, Coverage),
+				markCoverage:	bin.OffsetType(u16, Coverage),
+				baseCoverage:	bin.OffsetType(u16, Coverage),
 				markClassCount:	u16,									//Number of classes defined for marks
-				markArray:		binary.OffsetType(u16, binary.ArrayType(u16, MarkRecord)),
-				baseArray:		binary.OffsetType(u16, binary.ArrayType(u16, binary.RemainingArrayType(binary.OffsetType(u16, Anchor)))),	//	Array of offsets (one per mark class) to Anchor tables. Offsets are from beginning of BaseArray table, ordered by class (offsets may be NULL).
+				markArray:		bin.OffsetType(u16, bin.ArrayType(u16, MarkRecord)),
+				baseArray:		bin.OffsetType(u16, bin.ArrayType(u16, bin.RemainingArrayType(bin.OffsetType(u16, Anchor)))),	//	Array of offsets (one per mark class) to Anchor tables. Offsets are from beginning of BaseArray table, ordered by class (offsets may be NULL).
 			},
 		},
 		5: {//	MARK_TO_LIG		Attach a combining mark to a ligature
 			1:{//MARK_TO_LIG1
-				markCoverage:		binary.OffsetType(u16, Coverage),
-				ligatureCoverage:	binary.OffsetType(u16, Coverage),
+				markCoverage:		bin.OffsetType(u16, Coverage),
+				ligatureCoverage:	bin.OffsetType(u16, Coverage),
 				markClassCount:		u16,								//Number of defined mark classes
-				markArray:			binary.OffsetType(u16, binary.ArrayType(u16, MarkRecord)),
-				ligatureArray:		binary.OffsetType(u16, binary.ArrayType(u16, binary.OffsetType(u16, binary.ArrayType(u16, binary.OffsetType(u16, Anchor))))),
+				markArray:			bin.OffsetType(u16, bin.ArrayType(u16, MarkRecord)),
+				ligatureArray:		bin.OffsetType(u16, bin.ArrayType(u16, bin.OffsetType(u16, bin.ArrayType(u16, bin.OffsetType(u16, Anchor))))),
 			},
 		},
 		6: {//	MARK_TO_MARK	Attach a combining mark to another mark
 			1:{//MARK_TO_MARK1
-				mark1Coverage:	binary.OffsetType(u16, Coverage),
-				mark2Coverage:	binary.OffsetType(u16, Coverage),
+				mark1Coverage:	bin.OffsetType(u16, Coverage),
+				mark2Coverage:	bin.OffsetType(u16, Coverage),
 				markClassCount:	u16,							//Number of Combining Mark classes defined
-				mark1Array:		binary.OffsetType(u16, binary.ArrayType(u16, MarkRecord)),
-				mark2Array:		binary.OffsetType(u16, binary.ArrayType(u16, binary.OffsetType(u16, Anchor))),
+				mark1Array:		bin.OffsetType(u16, bin.ArrayType(u16, MarkRecord)),
+				mark2Array:		bin.OffsetType(u16, bin.ArrayType(u16, bin.OffsetType(u16, Anchor))),
 			},
 		},
 		7: //	CONTEXTUAL		Position one or more glyphs in context
@@ -1569,12 +1571,12 @@ const GPOS = {
 		9: {//	EXTENSION		Extension mechanism for other positionings
 			1:{//EXTENSION1
 				type:	u16,
-				extension:		binary.OffsetType(u32, binary.Remainder),
+				extension:		bin.OffsetType(u32, bin.Remainder),
 			},
 		},
 	})),
-	variations:		binary.Optional(s => s.obj.version >= 0x00010001,
-		binary.OffsetType(u32, binary.Remainder)
+	variations:		bin.Optional(s => s.obj.version >= 0x00010001,
+		bin.OffsetType(u32, bin.Remainder)
 	),
 };
 
@@ -1582,9 +1584,9 @@ const GPOS = {
 //  BASE  Baseline Table (OTF)
 //-----------------------------------------------------------------------------
 
-class BaseCoord extends binary.Class({
+class BaseCoord extends bin.Class({
 	format: u16,
-	data: binary.Switch(s => s.obj.format, {
+	data: bin.Switch(s => s.obj.format, {
 		1: {
 			coordinate: 	s16,	// X or Y value, in design units
 		},
@@ -1595,45 +1597,45 @@ class BaseCoord extends binary.Class({
 		},
 		3: {
 			coordinate: 	s16,	// X or Y value, in design units
-			deviceTable:	binary.OffsetType(u16, binary.Remainder),
+			deviceTable:	bin.OffsetType(u16, bin.Remainder),
 		}
 	})
 }) {}
 
 const MinMax = {
-	minCoord: binary.MaybeOffsetType(u16, BaseCoord),
-	maxCoord: binary.MaybeOffsetType(u16, BaseCoord),
-	featMinMaxRecords: binary.ArrayType(u16, {
+	minCoord: bin.MaybeOffsetType(u16, BaseCoord),
+	maxCoord: bin.MaybeOffsetType(u16, BaseCoord),
+	featMinMaxRecords: bin.ArrayType(u16, {
 		tag: TAG,
-		minCoord: binary.MaybeOffsetType(u16, BaseCoord),
-		maxCoord: binary.MaybeOffsetType(u16, BaseCoord),
+		minCoord: bin.MaybeOffsetType(u16, BaseCoord),
+		maxCoord: bin.MaybeOffsetType(u16, BaseCoord),
 	}),
 };
 
 const BaseScript = {
-	baseValues: binary.MaybeOffsetType(u16, {
+	baseValues: bin.MaybeOffsetType(u16, {
 		defaultIndex:	u16,		// Index of default baseline for this script
-		baseCoords:		binary.ArrayType(u16, binary.OffsetType(u16, BaseCoord)),
+		baseCoords:		bin.ArrayType(u16, bin.OffsetType(u16, BaseCoord)),
 	}),
-	defaultMinMax:		binary.MaybeOffsetType(u16, MinMax),
-	baseLangSysRecords: binary.ArrayType(u16, {
+	defaultMinMax:		bin.MaybeOffsetType(u16, MinMax),
+	baseLangSysRecords: bin.ArrayType(u16, {
 		tag:	TAG,
-		minMax:	binary.OffsetType(u16, MinMax),
+		minMax:	bin.OffsetType(u16, MinMax),
 	}),
 };
 
-class Axis extends binary.Class({
-	baseTagList: binary.MaybeOffsetType(u16, binary.ArrayType(u16, TAG)),
-	baseScriptList: binary.OffsetType(u16, binary.ArrayType(u16, {
+class Axis extends bin.Class({
+	baseTagList: bin.MaybeOffsetType(u16, bin.ArrayType(u16, TAG)),
+	baseScriptList: bin.OffsetType(u16, bin.ArrayType(u16, {
 		tag:	TAG,
-		script:	binary.OffsetType(u16, BaseScript),
+		script:	bin.OffsetType(u16, BaseScript),
 	})),
 }) {}
 
 const BASE = {
 	version:	u32,		// Version of the BASE table (1.0), 0x00010000
-	horizAxis:	binary.MaybeOffsetType(u16, Axis),
-	vertAxis:	binary.MaybeOffsetType(u16, Axis),
+	horizAxis:	bin.MaybeOffsetType(u16, Axis),
+	vertAxis:	bin.MaybeOffsetType(u16, Axis),
 	//v1_1:		binary.Optional(s => s.obj.version >= 0x00010001, {
 	//	variations: binary.MaybeOffsetType(u32, u32),
 	//})
@@ -1644,19 +1646,19 @@ const BASE = {
 //  MATH  Mathematical Typesetting Table (OTF)
 //-----------------------------------------------------------------------------
 
-class MathValueRecord extends binary.Class({
+class MathValueRecord extends bin.Class({
 	value: s16,	// The X or Y value in design units
-	deviceTable: binary.MaybeOffsetType(u16, binary.Remainder),  // Offset to device table
+	deviceTable: bin.MaybeOffsetType(u16, bin.Remainder),  // Offset to device table
 }) {};
 
 const MathGlyphConstruction = {
-	variants:	binary.ArrayType(u16, {
+	variants:	bin.ArrayType(u16, {
 		variantGlyph: 		u16,	// Glyph ID of the variant
 		advanceMeasurement:	u16,	// Advance width/height, in design units
 	}),
-	assembly:	binary.MaybeOffsetType(u16, {
+	assembly:	bin.MaybeOffsetType(u16, {
 		italicsCorrection:		MathValueRecord,		// Italics correction of this assembly
-		partRecords: binary.ArrayType(u16, {
+		partRecords: bin.ArrayType(u16, {
 			glyphID:				u16,	// Glyph ID for the part
 			startConnectorLength:	u16,	// Length of connector on left/top end
 			endConnectorLength:		u16,	// Length of connector on right/bottom end
@@ -1668,7 +1670,7 @@ const MathGlyphConstruction = {
 
 const MATH = {
 	version:		u32,			// Version of the MATH table (1.0), 0x00010000
-	constants:	binary.OffsetType(u16, {
+	constants:	bin.OffsetType(u16, {
 		scriptPercentScaleDown: 					s16,				// Percentage scale down for level 1 superscripts and subscripts
 		scriptScriptPercentScaleDown: 				s16,					// Percentage scale down for level 2 (scriptScript) superscripts and subscripts
 		delimitedSubFormulaMinHeight: 				u16,					// Minimum height at which to treat a delimited expression as a subformula
@@ -1726,34 +1728,34 @@ const MATH = {
 		radicalKernAfterDegree: 					MathValueRecord,	// Negative kern after degree of radical
 		radicalDegreeBottomRaisePercent: 			s16,				// Height of degree as percentage of rule thickness
 	}),
-	glyphInfo:	binary.OffsetType(u16, {
-		mathItalicsCorrectionInfo:	binary.OffsetType(u16, {
-			coverage:				binary.OffsetType(u16, Coverage),
-			italicsCorrection:		binary.ArrayType(u16, MathValueRecord),
+	glyphInfo:	bin.OffsetType(u16, {
+		mathItalicsCorrectionInfo:	bin.OffsetType(u16, {
+			coverage:				bin.OffsetType(u16, Coverage),
+			italicsCorrection:		bin.ArrayType(u16, MathValueRecord),
 		}),
-		mathTopAccentAttachment:	binary.OffsetType(u16, {
-			coverage:				binary.OffsetType(u16, Coverage),
-			topAccentAttachment:	binary.ArrayType(u16, MathValueRecord),
+		mathTopAccentAttachment:	bin.OffsetType(u16, {
+			coverage:				bin.OffsetType(u16, Coverage),
+			topAccentAttachment:	bin.ArrayType(u16, MathValueRecord),
 		}),
-		extendedShapeCoverage:		binary.OffsetType(u16, Coverage),
-		mathKernInfo:				binary.OffsetType(u16, {
-			coverage: binary.OffsetType(u16, Coverage),
-			kernInfo: binary.ArrayType(u16, {
-				topRightMathKern:		binary.MaybeOffsetType(u16, binary.ArrayType(u16, MathValueRecord)),
-				topLeftMathKern:		binary.MaybeOffsetType(u16, binary.ArrayType(u16, MathValueRecord)),
-				bottomRightMathKern:	binary.MaybeOffsetType(u16, binary.ArrayType(u16, MathValueRecord)),
-				bottomLeftMathKern:		binary.MaybeOffsetType(u16, binary.ArrayType(u16, MathValueRecord)),
+		extendedShapeCoverage:		bin.OffsetType(u16, Coverage),
+		mathKernInfo:				bin.OffsetType(u16, {
+			coverage: bin.OffsetType(u16, Coverage),
+			kernInfo: bin.ArrayType(u16, {
+				topRightMathKern:		bin.MaybeOffsetType(u16, bin.ArrayType(u16, MathValueRecord)),
+				topLeftMathKern:		bin.MaybeOffsetType(u16, bin.ArrayType(u16, MathValueRecord)),
+				bottomRightMathKern:	bin.MaybeOffsetType(u16, bin.ArrayType(u16, MathValueRecord)),
+				bottomLeftMathKern:		bin.MaybeOffsetType(u16, bin.ArrayType(u16, MathValueRecord)),
 			}),
 		}),
 	}),
-	variants:	binary.OffsetType(u16, {
+	variants:	bin.OffsetType(u16, {
 		minConnectorOverlap:	u16,   // Minimum overlap of connecting glyphs
 		vertGlyphCount:			u16,		// Number of glyphs with vertical variants
 		horizGlyphCount:		u16,		// Number of glyphs with horizontal variants
-		vertGlyphCoverage:		binary.OffsetType(u16, Coverage),
-		horizGlyphCoverage:		binary.OffsetType(u16, Coverage),
-		vertGlyphConstructions:	binary.ArrayType(s => s.obj.vertGlyphCount, binary.OffsetType(u16, MathGlyphConstruction)),
-		horizGlyphConstructions: binary.ArrayType(s => s.obj.horizGlyphCount, binary.OffsetType(u16, MathGlyphConstruction)),
+		vertGlyphCoverage:		bin.OffsetType(u16, Coverage),
+		horizGlyphCoverage:		bin.OffsetType(u16, Coverage),
+		vertGlyphConstructions:	bin.ArrayType(s => s.obj.vertGlyphCount, bin.OffsetType(u16, MathGlyphConstruction)),
+		horizGlyphConstructions: bin.ArrayType(s => s.obj.horizGlyphCount, bin.OffsetType(u16, MathGlyphConstruction)),
 	}),
 };
 
@@ -1766,14 +1768,14 @@ const DSIG = {
 	version:			u32,				// Version number of the DSIG table (0x00000001)
 	numSignatures:		u16,				// Number of signatures in the table
 	flags:				u16,				// Permission flags:bit 0: cannot be resigned,bits 1-7: Reserved (Set to 0)
-	signatureRecords:	binary.ArrayType(s => s.obj.numSignatures, {
+	signatureRecords:	bin.ArrayType(s => s.obj.numSignatures, {
 		format:	u32,
 		length:	u32,
-		block:	binary.OffsetType(u32, binary.Switch(s => s.obj.format, {
+		block:	bin.OffsetType(u32, bin.Switch(s => s.obj.format, {
 			1:	{
 				reserved1:	u16,				// Reserved for future use; set to zero.
 				reserved2:	u16,				// Reserved for future use; set to zero.
-				signature:	binary.Buffer(u32),	// PKCS#7 packetBlock1
+				signature:	bin.Buffer(u32),	// PKCS#7 packetBlock1
 			}
 		})),
 	}),
@@ -1825,7 +1827,7 @@ function ExtractSVG(svg: xml.Element, g: xml.Element) {
 		children.push(localsdefs);
 	}
 
-	const extent = new extent2;
+	const extent = new float2.extent;
 	for (const i of g.allElements()) {
 		if (i.name === 'path')
 			extent.combine(curveExtent(parseSVGpath(i.attributes.d)));
@@ -1833,7 +1835,7 @@ function ExtractSVG(svg: xml.Element, g: xml.Element) {
 	return makeSVG(children, extent);
 }
 
-function makeSVG(children: xml.Element[], extent: extent2) {
+function makeSVG(children: xml.Element[], extent: float2.extent) {
 	return new xml.Element('svg', {
 		xmlns:			"http://www.w3.org/2000/svg",
 		['xmlns:xlink']:"http://www.w3.org/1999/xlink",
@@ -1867,7 +1869,7 @@ function makeSVGgradient(fill: Fill, id: string) {
 function COLRtoSVG(layers: Layer[]) {
 	let id = 1;
 
-	const extent	= new extent2;
+	const extent	= new float2.extent;
 	const defs		= new xml.Element('defs');
 	const children	= [defs, ...layers.map(j => {
 		const d		= makeSVGPath(parseCurve(j.curves));
@@ -1923,7 +1925,7 @@ function fix<T>(obj: any, name: string, value: T): T {
 }
 
 export class Font extends makeClass<{
-	[K in keyof typeof tableReaders]?: binary.ReadType<typeof tableReaders[K]>
+	[K in keyof typeof tableReaders]?: bin.ReadType<typeof tableReaders[K]>
 }>() {
 	hmtx?:		Metrics;
 	vmtx?:		Metrics;
@@ -1934,7 +1936,7 @@ export class Font extends makeClass<{
 		const type = tableReaders[tag as keyof typeof tableReaders];
 		if (type) {
 			Object.defineProperty(this, tag, {
-				get() { return fix(this, tag, binary.read(new binary.stream(data), type)); },
+				get() { return fix(this, tag, bin.read(new bin.stream(data), type)); },
 				enumerable: true,
 				configurable: true,
 				//set(v) { Object.defineProperty(this, '_' + tag, {value: v, writable: false, configurable: false}); }
@@ -1952,7 +1954,7 @@ export class Font extends makeClass<{
 		if (!glyph) {
 			const cff = this['CFF '];
 			glyph = cff					? cff.getGlyph(id)
-				: this.glyphdata?.[id]	? new GlyphReader(new binary.stream(this.glyphdata[id]))
+				: this.glyphdata?.[id]	? new GlyphReader(new bin.stream(this.glyphdata[id]))
 				: undefined;
 			if (glyph)
 				this.cached[id] = glyph;
@@ -2012,7 +2014,7 @@ export class Font extends makeClass<{
 		if (svg) {
 			for (const i of svg.documents) {
 				if (id >= i.startGlyphID && id <= i.endGlyphID) {
-					const svg	= xml.parse(binary.utils.decodeText(i.doc.subarray(0, i.doc_length)));
+					const svg	= xml.parse(bin.utils.decodeText(i.doc.subarray(0, i.doc_length)));
 					const g		= getElementById(svg.firstElement()!, `glyph${id}`);
 					if (g)
 						return ExtractSVG(svg, g);
@@ -2030,7 +2032,7 @@ export class Font extends makeClass<{
 		if (glyph)
 			return makeSVG(
 				[new xml.Element('path', {d: makeSVGPath(parseCurve(glyph.curve!)), fill: 'black'})],
-				new extent2(float2(glyph.min.x, - glyph.max.y), float2(glyph.max.x, -glyph.min.x))
+				new float2.extent(float2(glyph.min.x, - glyph.max.y), float2(glyph.max.x, -glyph.min.x))
 			);
 	}
 

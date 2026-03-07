@@ -1,10 +1,10 @@
 
-import * as binary from '@isopodlabs/binary';
+import * as bin from '@isopodlabs/binary';
 import {curveVertex} from './curves';
-import {float2, extent2} from '@isopodlabs/maths/vector';
+import {float2} from '@isopodlabs/maths/vector';
 
-function as<T>(type: binary.Type) {
-	return binary.as(type, i => i as T);
+function as<T>(type: bin.Type) {
+	return bin.as(type, i => i as T);
 }
 //-----------------------------------------------------------------------------
 //	Postscript VM
@@ -55,10 +55,10 @@ class PS_VM {
 //	allows embedding PostScript language code that permits additional flexibility and extensibility of the format for usage with printer environments
 //-----------------------------------------------------------------------------
 
-const u8 		= binary.UINT8;
-const u16 		= binary.UINT16_BE;
-const s16 		= binary.INT16_BE;
-const s32 		= binary.INT32_BE;
+const u8 		= bin.UINT8;
+const u16 		= bin.UINT16_BE;
+const s16 		= bin.INT16_BE;
+const s32 		= bin.INT32_BE;
 
 export const enum prop {
 	version				= 0x00,
@@ -130,31 +130,31 @@ const header = {
 	minor_version:	u8,	// Format minor version (starting at 0)
 	hdrSize:		u8,	// Header size (bytes)
 	offset_size:	u8,	// Absolute offset (0) size
-	extra:	binary.Buffer(s => s.obj.hdrSize - 4),
+	extra:	bin.Buffer(s => s.obj.hdrSize - 4),
 };
 
 const index = {
-	get(s: binary.stream) {
+	get(s: bin.stream) {
 		const count = u16.get(s);
 		if (count) {
 			const offset_size = u8.get(s);
-			const offsets	= binary.readn(s, binary.UINT(offset_size * 8, true), count + 1).map(i => Number(i));
-			const data		= s.read_buffer(offsets[count] - 1);
+			const offsets	= bin.readn(s, bin.UINT(offset_size * 8, true), count + 1).map(i => Number(i));
+			const data		= bin.read_buffer(s, offsets[count] - 1);
 			return offsets.slice(0, count).map((i, x) => data.subarray(i - 1, offsets[x + 1] - 1));
 		} else {
 			return [];
 		}
 	},
-	put(_s: binary._stream) {}
+	put(_s: bin._stream) {}
 };
 
-function readPackedInt(s: binary._stream, b0: number) {
+function readPackedInt(s: bin._stream, b0: number) {
 	return b0 < 247	?  b0 - 139								// 32  < b0 < 246:	bytes:1; range:-107..+107
 		 : b0 < 251	? (b0 - 247) * +256 + u8.get(s) + 108	// 247 < b0 < 250:	bytes:2; range:+108..+1131
 					: (b0 - 251) * -256 - u8.get(s) - 108;	// 251 < b0 < 254:	bytes:2; range:-1131..-108
 }
 
-function writePackedInt(s: binary._stream, t: number) {
+function writePackedInt(s: bin._stream, t: number) {
 	if (Math.abs(t) <= 107) {
 		u8.put(s, t + 139);
 	} else if (Math.abs(t) <= 1131) {
@@ -176,7 +176,7 @@ function writePackedInt(s: binary._stream, t: number) {
 
 const trans = "0123456789.EE?-";
 
-function readPackedFloat(s: binary._stream) {
+function readPackedFloat(s: bin._stream) {
 	let str = '';
 	for (;;) {
 		const	b = u8.get(s);
@@ -195,7 +195,7 @@ function readPackedFloat(s: binary._stream) {
 	return parseFloat(str);
 };
 
-function writePackedFloat(s: binary._stream, t: number) {
+function writePackedFloat(s: bin._stream, t: number) {
 	const	str = t.toString();
 	const	nibbles: number[] = [];
 	for (let i = 0; i < str.length;) {
@@ -755,7 +755,7 @@ const PropNumber = (v: number[], _cff: CFF) => v[0];
 const PropString = (v: number[], cff: CFF) => cff.getString(v[0]);
 
 const propTypes = {
-	[prop.FontBBox]:			(v: number[]) => new extent2(float2(v[0], v[1]), float2(v[2], v[3])),
+	[prop.FontBBox]:			(v: number[]) => new float2.extent(float2(v[0], v[1]), float2(v[2], v[3])),
 	[prop.Private]:				(v: number[], cff: CFF, buffer: Uint8Array) => new PrivateDictionary(cff, buffer.subarray(v[1]), v[0]),
 	[prop.version]:				PropString,
 	[prop.Notice]:				PropString,
@@ -773,9 +773,9 @@ const propTypes = {
 	[prop.XUID]:				PropArray,
 	[prop.charset]:				PropNumber,//resolved later(v: number[], cff: CFF, buffer: Uint8Array) => new Charset(v[0], buffer, cff.numchr),
 	[prop.Encoding]:			PropNumber,
-	[prop.CharStrings]:			(v: number[], cff: CFF, buffer: Uint8Array) => binary.read(new binary.stream(buffer.subarray(v[0])), index),//as<Ops[]>(index)),
+	[prop.CharStrings]:			(v: number[], cff: CFF, buffer: Uint8Array) => bin.read(new bin.stream(buffer.subarray(v[0])), index),//as<Ops[]>(index)),
 //	[prop.Private]:				(v: number[], cff: CFF, buffer: Uint8Array) => new PrivateDictionary(cff, buffer.subarray(v[1]), v[0]),
-	[prop.Subrs]:				(v: number[], cff: CFF, buffer: Uint8Array) => binary.read(new binary.stream(buffer.subarray(v[0])), index),
+	[prop.Subrs]:				(v: number[], cff: CFF, buffer: Uint8Array) => bin.read(new bin.stream(buffer.subarray(v[0])), index),
 	[prop.defaultWidthX]:		PropNumber,
 	[prop.nominalWidthX]:		PropNumber,
 	[prop.shortint]:			PropNumber,
@@ -807,8 +807,8 @@ const propTypes = {
 	[prop.CIDFontType]:			PropNumber,
 	[prop.CIDCount]:			PropNumber,
 	[prop.UIDBase]:				PropNumber,
-	[prop.FDArray]:				(v: number[], cff: CFF, buffer: Uint8Array) => binary.read(new binary.stream(buffer.subarray(v[0])), index).map(i => new Dictionary(cff, buffer, i)),
-	[prop.FDSelect]:			(v: number[], cff: CFF, buffer: Uint8Array) => binary.read(new binary.stream(buffer.subarray(v[0])), FDSelect),
+	[prop.FDArray]:				(v: number[], cff: CFF, buffer: Uint8Array) => bin.read(new bin.stream(buffer.subarray(v[0])), index).map(i => new Dictionary(cff, buffer, i)),
+	[prop.FDSelect]:			(v: number[], cff: CFF, buffer: Uint8Array) => bin.read(new bin.stream(buffer.subarray(v[0])), FDSelect),
 	[prop.FontName]:			PropString,
 };
 
@@ -856,9 +856,9 @@ class Dictionary {
 	constructor(cff: CFF, buffer: Uint8Array, block: Uint8Array, entries: dictionary_entries = {}) {
 		Object.assign(this.entries, entries);
 
-		const s = new binary.stream(block);
+		const s = new bin.stream(block);
 		let values: number[] = [];
-		while (s.remaining()) {
+		while (s.tell() < block.length) {
 			let	value = u8.get(s);
 			if (value < 0x20) {
 				switch (value) {
@@ -1130,10 +1130,10 @@ const PREDEFINED_CHARSETS: Record<number, Record<number, SID>> = {
 };
 	
 class Charset {
-	static Reader = binary.Switch(u8, {
-		0: binary.ArrayType(s => s.obj.count, u16),
-		1: binary.RemainingArrayType(binary.as({first: u16, nLeft: u8},		(v, s) => v.first + v.nLeft < s.obj.count ? v : undefined)),
-		2: binary.RemainingArrayType(binary.as({first: u16, nLeft: u16},	(v, s) => v.first + v.nLeft < s.obj.count ? v : undefined)),
+	static Reader = bin.Switch(u8, {
+		0: bin.ArrayType(s => s.obj.count, u16),
+		1: bin.RemainingArrayType(bin.as({first: u16, nLeft: u8},		(v, s) => v.first + v.nLeft < s.obj.count ? v : undefined)),
+		2: bin.RemainingArrayType(bin.as({first: u16, nLeft: u16},	(v, s) => v.first + v.nLeft < s.obj.count ? v : undefined)),
 	});
 
 	table: any;//Record<number, SID>;
@@ -1142,7 +1142,7 @@ class Charset {
 		if (index <= 2) {
 			this.table = PREDEFINED_CHARSETS[index];
 		} else {
-			this.table = binary.read(new binary.stream(buffer.subarray(index)), Charset.Reader, this);
+			this.table = bin.read(new bin.stream(buffer.subarray(index)), Charset.Reader, this);
 		}
 	}
 }
@@ -1153,15 +1153,15 @@ abstract class FDSelector {
 
 const FDSelect = {
 	format:	u8,
-	data: as<FDSelector>(binary.Switch(s => s.obj.format, {
-		0: class X0 extends binary.Class(binary.RemainingArrayType(u8)) {
+	data: as<FDSelector>(bin.Switch(s => s.obj.format, {
+		0: class X0 extends bin.Class(bin.RemainingArrayType(u8)) {
 			get(i: number) { return this[i]; }
 		},
-		3: class X3 extends binary.Class({
-			ranges: binary.ArrayType(u16, {first: u16, fd: u8}),
+		3: class X3 extends bin.Class({
+			ranges: bin.ArrayType(u16, {first: u16, fd: u8}),
 			sentinel: u16
 		}) {
-			constructor(s: binary._stream) {
+			constructor(s: bin._stream) {
 				super(s);
 			}
 			get(i: number) {
@@ -1174,11 +1174,11 @@ const FDSelect = {
 	}))
 };
 
-export class CFF extends binary.Class({
+export class CFF extends bin.Class({
 	h:			header,
-	names:		binary.as(index, blocks => blocks.map(i => binary.utils.decodeText(i))),
+	names:		bin.as(index, blocks => blocks.map(i => bin.utils.decodeText(i))),
 	indices:	index,
-	strings:	binary.as(index, blocks => blocks.map(i => binary.utils.decodeText(i))),
+	strings:	bin.as(index, blocks => blocks.map(i => bin.utils.decodeText(i))),
 	gsubrs:		index,
 }) {
 //	static get(file: binary._stream) { return new this(file); }
@@ -1187,8 +1187,8 @@ export class CFF extends binary.Class({
 	nominalWidth	= private_defaults[prop.nominalWidthX][0];
 	charset?:	Charset;
 
-	constructor(s: binary._stream) {
-		const buffer	= s.remainder();
+	constructor(s: bin._stream) {
+		const buffer	= bin.remainder(s);
 		super(s);
 
 		this.pub_dict = new Dictionary(this, buffer, this.indices[0], dict_top_defaults);

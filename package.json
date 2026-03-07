@@ -11,10 +11,10 @@
 		"README.md"
 	],
 	"scripts": {
+		"postinstall": "ts-patch install && copy-file node_modules/@isopodlabs/binary/scripts/transform.ts scripts/transform.ts",
 		"build": "tsc",
 		"watch": "tsc -watch -p ./",
 		"lint": "eslint \"src/**/*.ts\"",
-		"patch": "ts-patch install",
 		"link": "npm link @isopodlabs/binary @isopodlabs/maths @isopodlabs/xml"
 	},
 	"keywords": [

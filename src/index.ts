@@ -45,7 +45,8 @@ function loadTTF_OTF(file: binary.stream) {
 	function getTable(tag: string) {
 		const table = sfnt.tables.find(i => i.tag === tag);
 		if (table)
-			return file.buffer_at(table.offset, table.length);
+			//return file.buffer_at(table.offset, table.length);
+			return binary.read(file, binary.OffsetType(table.offset, binary.Buffer(table.length)));
 	}
 
 	for (const i of tableTypes) {
@@ -91,7 +92,7 @@ class TTC extends FontGroup {
 		const head	= binary.read(file, TTCHeader);
 		if (head.tag == "ttcf") {
 			const	offsets = binary.readn(file, u32, head.num_fonts);
-			this.fonts = offsets.map(offset => loadTTF_OTF(file.seek(offset)));
+			this.fonts = offsets.map(offset => { file.seek(offset); return loadTTF_OTF(file); });
 		}
 	}
 

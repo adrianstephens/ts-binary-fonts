@@ -1,4 +1,4 @@
-import { float2, extent2, reflect, float2x2, float2x3, max_circle_point, mid }  from '@isopodlabs/maths/vector';
+import { float2, reflect, float2x2, float2x3, max_circle_point, mid }  from '@isopodlabs/maths/vector';
 import { circle } from '@isopodlabs/maths/geometry';
 
 export interface color {
@@ -288,7 +288,7 @@ export function parseCurve(curves: curveVertex[]): CurveSource {
 }
 
 export function curveExtent(source: CurveSource) {
-	const ext = new extent2;
+	const ext = new float2.extent;
 	function pt(p: float2) { ext.add(p); }
 	const sink: CurveSink = {
 		Begin(a: float2) 									{ pt(a); },
