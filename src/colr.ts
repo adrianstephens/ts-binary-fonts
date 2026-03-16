@@ -23,21 +23,21 @@ export const CPAL = {
 	numPaletteEntries:	u16,		//	Number of palette entries in each palette.
 	numPalettes:		u16,		//	Number of palettes in the table.
 	numColorRecords:	u16,		//	Total number of color records, combined for all palettes.
-	colors:	binary.OffsetType(u32, binary.ArrayType(s => s.obj.numColorRecords, {
+	colors:	binary.Offset(u32, binary.Array(s => s.obj.numColorRecords, {
 		b: u8,
 		g: u8,
 		r: u8,
 		a: u8,
 	})),
-	colorRecordIndices:	binary.RemainingArrayType(u16),	//	Index of each palette's first color record in the combined color record array.
+	colorRecordIndices:	binary.RemainingArray(u16),	//	Index of each palette's first color record in the combined color record array.
 
 	v1:	binary.Optional(s => s.obj.version >= 1, {
-		types:				binary.OffsetType(u32, binary.asEnum(u16, {
+		types:				binary.Offset(u32, binary.asEnum(u16, {
 			USABLE_WITH_LIGHT_BACKGROUND:	0x0001,
 			USABLE_WITH_DARK_BACKGROUND:	0x0002
 		})),
-		paletteLabels:		binary.OffsetType(u32, u16),	//Array of 'name' table IDs (typically in the font-specific name ID range) that specify user interface strings associated with each palette. Use 0xFFFF if no name ID is provided for a palette.
-		paletteEntryLabels:	binary.OffsetType(u32, u16),	//Array of 'name' table IDs (typically in the font-specific name ID range) that specify user interface strings associated with each palette entry, e.g. 'Outline', 'Fill'. This set of palette entry labels applies to all palettes in the font. Use 0xFFFF if no name ID is provided for a palette entry.
+		paletteLabels:		binary.Offset(u32, u16),	//Array of 'name' table IDs (typically in the font-specific name ID range) that specify user interface strings associated with each palette. Use 0xFFFF if no name ID is provided for a palette.
+		paletteEntryLabels:	binary.Offset(u32, u16),	//Array of 'name' table IDs (typically in the font-specific name ID range) that specify user interface strings associated with each palette entry, e.g. 'Outline', 'Fill'. This set of palette entry labels applies to all palettes in the font. Use 0xFFFF if no name ID is provided for a palette entry.
 	}),
 };
 
@@ -68,7 +68,7 @@ const enum PAINT {
 
 const ColorLine = {
 	extend:		u8,
-	stops:		binary.ArrayType(u16, {
+	stops:		binary.Array(u16, {
 		stopOffset:		fixed16,	   // Position on a color line
 		paletteIndex:	u16,
 		alpha:			fixed16,
@@ -164,7 +164,7 @@ class PaintSolid extends binary.Class({
 }
 
 class PaintLinearGradient extends binary.Class({
-	colorLine:	binary.OffsetType(u24, ColorLine),
+	colorLine:	binary.Offset(u24, ColorLine),
 	p0:	vec2(s16),			// Start point
 	p1:	vec2(s16),			// End point
 	p2:	vec2(s16),			// Rotation point
@@ -182,7 +182,7 @@ class PaintLinearGradient extends binary.Class({
 }
 
 class PaintRadialGradient extends binary.Class({
-	colorLine:		binary.OffsetType(u24, ColorLine),
+	colorLine:		binary.Offset(u24, ColorLine),
 	start_centre: 	vec2(s16), start_radius: u16,
 	end_centre: 	vec2(s16), end_radius: u16,
 }) {
@@ -198,7 +198,7 @@ class PaintRadialGradient extends binary.Class({
 }
 
 class PaintSweepGradient extends binary.Class({
-	colorLine:	binary.OffsetType(u24, ColorLine),
+	colorLine:	binary.Offset(u24, ColorLine),
 	center:		vec2(s16),
 	startAngle:	fixed16,
 	endAngle:	fixed16,
@@ -298,7 +298,7 @@ class PaintGlyph extends SubPaint {
 }
 
 const Affine2x3 = binary.as(
-	binary.OffsetType(u24, {x: vec2(fixed32), y: vec2(fixed32), d: vec2(fixed32)}),
+	binary.Offset(u24, {x: vec2(fixed32), y: vec2(fixed32), d: vec2(fixed32)}),
 	v => v ? float2x3(v.x, v.y, v.d) : float2x3.identity()
 );
 const Translate		= binary.as(vec2(s16), 		v => float2.translate(v));
@@ -388,42 +388,42 @@ const PaintBase = binary.Switch(u8, {
 });
 
 function ReadPaint(file: binary._stream) : Paint {
-	const base	= binary.read(file, binary.OffsetType(u24, PaintBase));
+	const base	= binary.read(file, binary.Offset(u24, PaintBase));
 	return base as unknown as Paint;
 }
 
 export class COLR extends binary.Class({
 	version:				u16,
 	numBaseGlyphRecords:	u16,
-	baseGlyphs:				binary.OffsetType(u32, binary.ArrayType(s => s.obj.numBaseGlyphRecords, {
+	baseGlyphs:				binary.Offset(u32, binary.Array(s => s.obj.numBaseGlyphRecords, {
 		glyphID:			u16,	// Glyph ID of the base glyph
 		firstLayerIndex:	u16,	// Index (base 0) into the layerRecords array
 		numLayers:			u16,	// Number of color layers associated with this glyph
 	})),
-	layers:					binary.OffsetType(u32, binary.ArrayType(s => s.obj.numLayerRecords, {
+	layers:					binary.Offset(u32, binary.Array(s => s.obj.numLayerRecords, {
 		glyphID:			u16,	// Glyph ID of the glyph used for a given layer
 		paletteIndex:		u16,	// Index (base 0) for a palette entry in the CPAL table
 	})),
 	numLayerRecords:		u16,
 
 	v1:	binary.Optional(s => s.obj.version === 1, {
-		baseGlyphs:		binary.OffsetType(u32, binary.ArrayType(u32, {
+		baseGlyphs:		binary.Offset(u32, binary.Array(u32, {
 			glyphID:	u16,		// Glyph ID of the base glyph
-			paint:		binary.OffsetType(u32, PaintBase),
+			paint:		binary.Offset(u32, PaintBase),
 		})),
 
-		layers:			binary.OffsetType(u32, binary.ArrayType(u32, binary.OffsetType(u32, PaintBase))),
-		clips:			binary.MaybeOffsetType(u32, {
+		layers:			binary.Offset(u32, binary.Array(u32, binary.Offset(u32, PaintBase))),
+		clips:			binary.Offset(u32, {
 			format:		u8,
-			clips:		binary.ArrayType(u32, {
+			clips:		binary.Array(u32, {
 				startGlyphID:	u16,
 				endGlyphID:		u16,
-				clipBox:		binary.OffsetType(u24, {
+				clipBox:		binary.Offset(u24, {
 					format:	u8,
 					xMin:	s16, yMin: s16, xMax: s16, yMax: s16,
 				}),
 			}),
-		}),
+		}, true),
 		varIndexMapOffset:			u32,	// Offset to DeltaSetIndexMap table (may be NULL)
 		itemVariationStoreOffset:	u32,	// Offset to ItemVariationStore> (may be NULL)
 	}),

@@ -4,7 +4,7 @@ import {WOFF, WOFF2} from "./woff";
 
 export {Font} from './font';
 
-const TAG		= binary.StringType(4);
+const TAG		= binary.String(4);
 const u16 		= binary.UINT16_BE;
 const u32 		= binary.UINT32_BE;
 
@@ -29,7 +29,7 @@ const SFNTHeader = {
 	search_range:	u16,	// (Maximum power of 2 <= numTables) x 16.
 	entry_selector:	u16,	// Log2(maximum power of 2 <= numTables).
 	range_shift:	u16,	// NumTables x 16-searchRange.
-	tables:	binary.ArrayType(s => s.obj.num_tables, {
+	tables:	binary.Array(s => s.obj.num_tables, {
 		tag:			TAG,	// 4 -byte identifier.
 		checksum:		u32,	// CheckSum for this table.
 		offset:			u32,	// Offset from beginning of TrueType font file.
@@ -46,7 +46,7 @@ function loadTTF_OTF(file: binary.stream) {
 		const table = sfnt.tables.find(i => i.tag === tag);
 		if (table)
 			//return file.buffer_at(table.offset, table.length);
-			return binary.read(file, binary.OffsetType(table.offset, binary.Buffer(table.length)));
+			return binary.read(file, binary.Offset(table.offset, binary.Buffer(table.length)));
 	}
 
 	for (const i of tableTypes) {
@@ -105,7 +105,7 @@ class TTC extends FontGroup {
 //	EOT	- embedded opentype
 //-----------------------------------------------------------------------------
 /*
-const EOTname = binary.StringType(u16);
+const EOTname = binary.String(u16);
 
 const EOTHeader = {
 	//enum {MAGIC = 0x504c};
@@ -120,10 +120,10 @@ const EOTHeader = {
 	weight:		u32,
 	type:		u16,
 	magic:		u16,
-	unicode_range:			binary.ArrayType(4, u32),
-	codepage_range:			binary.ArrayType(2, u32),
+	unicode_range:			binary.Array(4, u32),
+	codepage_range:			binary.Array(2, u32),
 	checksum_adjustment:	u32,
-	reserved:				binary.ArrayType(4, u32),
+	reserved:				binary.Array(4, u32),
 
 	//all padding values must be set to 0x0000
 	padding1:		u16,

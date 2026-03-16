@@ -139,7 +139,7 @@ const index = {
 		if (count) {
 			const offset_size = u8.get(s);
 			const offsets	= bin.readn(s, bin.UINT(offset_size * 8, true), count + 1).map(i => Number(i));
-			const data		= bin.read_buffer(s, offsets[count] - 1);
+			const data		= s.view(Uint8Array, offsets[count] - 1);
 			return offsets.slice(0, count).map((i, x) => data.subarray(i - 1, offsets[x + 1] - 1));
 		} else {
 			return [];
@@ -1131,9 +1131,9 @@ const PREDEFINED_CHARSETS: Record<number, Record<number, SID>> = {
 	
 class Charset {
 	static Reader = bin.Switch(u8, {
-		0: bin.ArrayType(s => s.obj.count, u16),
-		1: bin.RemainingArrayType(bin.as({first: u16, nLeft: u8},		(v, s) => v.first + v.nLeft < s.obj.count ? v : undefined)),
-		2: bin.RemainingArrayType(bin.as({first: u16, nLeft: u16},	(v, s) => v.first + v.nLeft < s.obj.count ? v : undefined)),
+		0: bin.Array(s => s.obj.count, u16),
+		1: bin.RemainingArray(bin.as({first: u16, nLeft: u8},		(v, s) => v.first + v.nLeft < s.obj.count ? v : undefined)),
+		2: bin.RemainingArray(bin.as({first: u16, nLeft: u16},	(v, s) => v.first + v.nLeft < s.obj.count ? v : undefined)),
 	});
 
 	table: any;//Record<number, SID>;
@@ -1154,11 +1154,11 @@ abstract class FDSelector {
 const FDSelect = {
 	format:	u8,
 	data: as<FDSelector>(bin.Switch(s => s.obj.format, {
-		0: class X0 extends bin.Class(bin.RemainingArrayType(u8)) {
+		0: class X0 extends bin.Class(bin.RemainingArray(u8)) {
 			get(i: number) { return this[i]; }
 		},
 		3: class X3 extends bin.Class({
-			ranges: bin.ArrayType(u16, {first: u16, fd: u8}),
+			ranges: bin.Array(u16, {first: u16, fd: u8}),
 			sentinel: u16
 		}) {
 			constructor(s: bin._stream) {
@@ -1188,7 +1188,7 @@ export class CFF extends bin.Class({
 	charset?:	Charset;
 
 	constructor(s: bin._stream) {
-		const buffer	= bin.remainder(s);
+		const buffer	= s.remainder();
 		super(s);
 
 		this.pub_dict = new Dictionary(this, buffer, this.indices[0], dict_top_defaults);
