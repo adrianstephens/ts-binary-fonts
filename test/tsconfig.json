@@ -3,11 +3,7 @@
 	"compilerOptions": {
 		"declaration": false,
 		"outDir": ".",
-		"paths": {
-			"src/*": [
-				"../dist/*"
-			]
-		},
+		"rootDir": ".",
 		"plugins": []
 	},
 	"include": [

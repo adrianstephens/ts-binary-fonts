@@ -40,6 +40,25 @@ if (font && font instanceof Font) {
 
 ```
 
+### Browser
+For browser code, import the browser entry and provide the font bytes yourself:
+
+```typescript
+import { load, Font } from '@isopodlabs/binary_fonts/browser';
+
+const data = new Uint8Array(await fetch('/fonts/example.woff2').then(r => r.arrayBuffer()));
+const font = await load(data);
+
+if (font instanceof Font) {
+    const mapping = font.getGlyphMapping();
+    const id = mapping?.['A'.charCodeAt(0)];
+    if (id !== undefined)
+        console.log(font.getGlyphSVG(id)?.toString());
+}
+```
+
+The browser entry configures WOFF and WOFF2 decompression using `DecompressionStream` when available. The default package entry still includes `loadFile`, which is Node-only.
+
 ## Supported File Types
 The binary_font package supports reading and parsing the following font formats:
 

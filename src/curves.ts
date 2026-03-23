@@ -307,31 +307,36 @@ export function curveExtent(source: CurveSource) {
 //	Fill
 //-----------------------------------------------------------------------------
 
-export const enum FILL {
-	SOLID, LINEAR, SWEEP, RADIAL,
-};
-export const enum EXTEND {
-	PAD	   		= 0,	 // Use nearest color stop
-	REPEAT 		= 1,	 // Repeat from farthest color stop
-	REFLECT		= 2,	 // Mirror color line from nearest end
-};
+export const FILL = {
+	SOLID:		0,
+	LINEAR:		1,
+	SWEEP:		2,
+	RADIAL: 	3,
+} as const;
+
+export const EXTEND = {
+	PAD:		0,	 // Use nearest color stop
+	REPEAT: 	1,	 // Repeat from farthest color stop
+	REFLECT:	2,	 // Mirror color line from nearest end
+} as const;
+export type EXTEND = typeof EXTEND[keyof typeof EXTEND];
 
 export interface ColorStop {
-	color: color,
-	stop: number;
+	color:	color,
+	stop:	number;
 }
 
 export interface Gradient {
-	stops:	ColorStop[];
-	extend:	EXTEND;
+	stops:		ColorStop[];
+	extend:		EXTEND;
 	transform:	float2x3;
 }
 
 export type Fill =
-	{type: FILL.SOLID,	color: color}
-|	{type: FILL.LINEAR,	p0: float2, p1: float2, p2: float2, gradient: Gradient}
-|	{type: FILL.SWEEP,	p0: float2, angle0: number, angle1: number, gradient: Gradient}
-|	{type: FILL.RADIAL,	c0: circle, c1: circle, gradient: Gradient}
+	{type: typeof FILL.SOLID,	color: color}
+|	{type: typeof FILL.LINEAR,	p0: float2, p1: float2, p2: float2, gradient: Gradient}
+|	{type: typeof FILL.SWEEP,	p0: float2, angle0: number, angle1: number, gradient: Gradient}
+|	{type: typeof FILL.RADIAL,	c0: circle, c1: circle, gradient: Gradient}
 
 
 export interface Layer {

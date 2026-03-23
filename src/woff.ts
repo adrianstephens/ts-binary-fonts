@@ -1,9 +1,9 @@
-import * as zlib from 'zlib';
 import * as xml from '@isopodlabs/xml';
 import * as bin from '@isopodlabs/binary';
 import {Font, vec2, Glyph, loadLocs, loadMetrics, readComposite, tableTypes} from './font';
 import {curveVertex, curveExtent, parseCurve, makeCurveVertex} from './curves';
 import {float2} from '@isopodlabs/maths/vector';
+import {brotli, decodeText, inflate} from './runtime';
 
 const TAG		= bin.String(4);
 const u8 		= bin.UINT8;
@@ -38,14 +38,6 @@ const WOFFHeader = {
 	}),
 };
 
-async function inflateAsync(buffer: Uint8Array) {
-	return new Promise<Uint8Array>(resolve => zlib.inflate(buffer, (err, buffer) => resolve(buffer)));
-};
-
-async function brotliAsync(buffer: Uint8Array) {
-	return new Promise<Uint8Array>(resolve => zlib.brotliDecompress(buffer, (err, buffer) => resolve(buffer)));
-};
-
 export class WOFF extends Font {
 	metadata?:	xml.Element;
 	priv?:		Uint8Array;
@@ -56,12 +48,11 @@ export class WOFF extends Font {
 		console.log(h);
 
 		if (h.metaLength) {
-			//const buffer = inflateAsync(file.buffer_at(h.metaOffset, h.metaLength));
-			const buffer = inflateAsync(bin.read(file, bin.Offset(h.metaOffset, bin.Buffer(h.metaLength))));
-			me.metadata = xml.parse((await buffer).toString());
+			const buffer = inflate(bin.read(file, bin.Offset(h.metaOffset, bin.Buffer(h.metaLength))));
+			me.metadata = xml.parse(decodeText(await buffer));
 		}
 		if (h.privLength) {
-			const buffer = inflateAsync(bin.read(file, bin.Offset(h.privOffset, bin.Buffer(h.privLength))));
+			const buffer = inflate(bin.read(file, bin.Offset(h.privOffset, bin.Buffer(h.privLength))));
 			me.priv = await buffer;
 		}
 
@@ -73,7 +64,7 @@ export class WOFF extends Font {
 			if (table) {
 				const buffer = bin.read(file, bin.Offset(table.offset, bin.Buffer(table.compLength)));
 				return table.compLength != table.origLength
-					? inflateAsync(buffer)
+					? inflate(buffer)
 					: bin.read(file, bin.Offset(table.offset, bin.Buffer(table.origLength)));
 			}
 		}
@@ -331,18 +322,16 @@ export class WOFF2 extends Font {
 		console.log(h);
 
 		if (h.metaLength) {
-			//const buffer = brotliAsync(file.buffer_at(h.metaOffset, h.metaLength));
-			const buffer = brotliAsync(bin.read(file, bin.Offset(h.metaOffset, bin.Buffer(h.metaLength))));
-			me.metadata = xml.parse((await buffer).toString());
+			const buffer = brotli(bin.read(file, bin.Offset(h.metaOffset, bin.Buffer(h.metaLength))));
+			me.metadata = xml.parse(decodeText(await buffer));
 		}
 		if (h.privLength) {
-			//const buffer = brotliAsync(file.buffer_at(h.privOffset, h.privLength));
-			const buffer = brotliAsync(bin.read(file, bin.Offset(h.privOffset, bin.Buffer(h.privLength))));
+			const buffer = brotli(bin.read(file, bin.Offset(h.privOffset, bin.Buffer(h.privLength))));
 			me.priv = await buffer;
 		}
 
 		const comp		= bin.read(file, bin.Buffer(h.totalCompressedSize));
-		const uncomp	= await brotliAsync(comp);
+		const uncomp	= await brotli(comp);
 
 		let offset = 0;
 		for (const i of h.tables) {

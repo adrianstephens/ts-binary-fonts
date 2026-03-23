@@ -72,8 +72,11 @@ function arrayRotate<T>(array: T[], start: number, end: number, shift: number): 
 	}
 }
 
-function as<T>(type: bin.TypeT<T>) {
+function as<T, U = T>(type: bin.TypeT<U>) {
 	return bin.as(type, i => i as T);
+}
+function asV<T extends {[key: string]: any}>(type: bin.TypeT<any>, values: T) {
+	return bin.as(type, i => i as T[keyof T]);
 }
 
 //-----------------------------------------------------------------------------
@@ -99,73 +102,75 @@ export function vec2(type: bin.TypeT<number>): bin.TypeT<float2> {
 	return bin.as({x: type, y: type}, v => float2(v.x, v.y));
 }
 
-const enum PLATFORM {
-	UNICODE				= 0,	//Various
-	MACINTOSH			= 1,	//Script manager code
-	ISO					= 2,	//ISO encoding [deprecated]
-	WINDOWS				= 3,	//Windows encoding
-	CUSTOM				= 4,	//Custom
-};
+export const PLATFORM = {
+	UNICODE:			0,	//Various
+	MACINTOSH:			1,	//Script manager code
+	ISO:				2,	//ISO encoding [deprecated]
+	WINDOWS:			3,	//Windows encoding
+	CUSTOM:				4,	//Custom
+} as const;
+export type PLATFORM = (typeof PLATFORM)[keyof typeof PLATFORM];
 
-const enum ENCODING {
-	UNI_default			= 0,	//deprecated
-	UNI_1_1				= 1,	//deprecated
-	UNI_iso_10646		= 2,	//deprecated
-	UNI_2_bmp			= 3,	//Unicode BMP only
-	UNI_2_full			= 4,	//Unicode full repertoire
-	UNI_variation		= 5,	//for use with subtable format 14
-	UNI_full			= 6,	//for use with subtable format 13
+export const ENCODING = {
+	UNI_default:		0,	//deprecated
+	UNI_1_1:			1,	//deprecated
+	UNI_iso_10646:		2,	//deprecated
+	UNI_2_bmp:			3,	//Unicode BMP only
+	UNI_2_full:			4,	//Unicode full repertoire
+	UNI_variation:		5,	//for use with subtable format 14
+	UNI_full:			6,	//for use with subtable format 13
 
-	MAC_Roman			= 0,
-	MAC_Japanese		= 1,
-	MAC_TradChinese		= 2,
-	MAC_Korean			= 3,
-	MAC_Arabic			= 4,
-	MAC_Hebrew			= 5,
-	MAC_Greek			= 6,
-	MAC_Russian			= 7,
-	MAC_RSymbol			= 8,
-	MAC_Devanagari		= 9,
-	MAC_Gurmukhi		= 10,
-	MAC_Gujarati		= 11,
-	MAC_Oriya			= 12,
-	MAC_Bengali			= 13,
-	MAC_Tamil			= 14,
-	MAC_Telugu			= 15,
-	MAC_Kannada			= 16,
-	MAC_Malayalam		= 17,
-	MAC_Sinhalese		= 18,
-	MAC_Burmese			= 19,
-	MAC_Khmer			= 20,
-	MAC_Thai			= 21,
-	MAC_Laotian			= 22,
-	MAC_Georgian		= 23,
-	MAC_Armenian		= 24,
-	MAC_SimpChinese		= 25,
-	MAC_Tibetan			= 26,
-	MAC_Mongolian		= 27,
-	MAC_Geez			= 28,
-	MAC_Slavic			= 29,
-	MAC_Vietnamese		= 30,
-	MAC_Sindhi			= 31,
-	MAC_Uninterpreted	= 32,
+	MAC_Roman:			0,
+	MAC_Japanese:		1,
+	MAC_TradChinese:	2,
+	MAC_Korean:			3,
+	MAC_Arabic:			4,
+	MAC_Hebrew:			5,
+	MAC_Greek:			6,
+	MAC_Russian:		7,
+	MAC_RSymbol:		8,
+	MAC_Devanagari:		9,
+	MAC_Gurmukhi:		10,
+	MAC_Gujarati:		11,
+	MAC_Oriya:			12,
+	MAC_Bengali:		13,
+	MAC_Tamil:			14,
+	MAC_Telugu:			15,
+	MAC_Kannada:		16,
+	MAC_Malayalam:		17,
+	MAC_Sinhalese:		18,
+	MAC_Burmese:		19,
+	MAC_Khmer:			20,
+	MAC_Thai:			21,
+	MAC_Laotian:		22,
+	MAC_Georgian:		23,
+	MAC_Armenian:		24,
+	MAC_SimpChinese:	25,
+	MAC_Tibetan:		26,
+	MAC_Mongolian:		27,
+	MAC_Geez:			28,
+	MAC_Slavic:			29,
+	MAC_Vietnamese:		30,
+	MAC_Sindhi:			31,
+	MAC_Uninterpreted:	32,
 
-	ISO_ASCII7			= 0,
-	ISO_10646			= 1,
-	ISO_8859_1			= 2,
+	ISO_ASCII7:			0,
+	ISO_10646:			1,
+	ISO_8859_1:			2,
 
-	WIN_Symbol			= 0,
-	WIN_UCS2			= 1,
-	WIN_ShiftJIS		= 2,
-	WIN_PRC				= 3,
-	WIN_Big5			= 4,
-	WIN_Wansung			= 5,
-	WIN_Johab			= 6,
-	WIN_Reserved7		= 7,
-	WIN_Reserved8		= 8,
-	WIN_Reserved9		= 9,
-	WIN_UCS4			= 10,
-};
+	WIN_Symbol:			0,
+	WIN_UCS2:			1,
+	WIN_ShiftJIS:		2,
+	WIN_PRC:			3,
+	WIN_Big5:			4,
+	WIN_Wansung:		5,
+	WIN_Johab:			6,
+	WIN_Reserved7:		7,
+	WIN_Reserved8:		8,
+	WIN_Reserved9:		9,
+	WIN_UCS4:			10,
+} as const;
+export type ENCODING = (typeof ENCODING)[keyof typeof ENCODING];
 
 //-----------------------------------------------------------------------------
 //	OS/2
@@ -232,52 +237,57 @@ const OS2 = {
 //	head	(TTF + OTF)
 //-----------------------------------------------------------------------------
 
-enum headFLAGS {
-	ybaseline 		= 1 << 0,// - y value of 0 specifies baseline
-	xlsb			= 1 << 1,// - x position of left most black bit is LSB
-	scaled_differ	= 1 << 2,// - scaled point size and actual point size will differ (i.e. 24 point glyph differs from 12 point glyph scaled by factor of 2)
-	int_scale		= 1 << 3,// - use integer scaling instead of fractional
-	ms0				= 1 << 4,// - (used by the Microsoft implementation of the TrueType scaler)
-	vertical		= 1 << 5,// - This bit should be set in fonts that are intended to e laid out vertically, and in which the glyphs have been drawn such that an x-coordinate of 0 corresponds to the desired vertical baseline.
-//			= 1 << 6,// - This bit must be set to zero.
-	arabic	= 1 << 7,// - This bit should be set if the font requires layout for correct linguistic rendering (e.g. Arabic fonts).
-	metamorphosis	= 1 << 8,// - This bit should be set for a GX font which has one or more metamorphosis effects designated as happening by default.
-	strong_rl		= 1 << 9,// - This bit should be set if the font contains any strong right-to-left glyphs.
-	indic			= 1 << 10,// - This bit should be set if the font contains Indic-style rearrangement effects.
-//	= 1 << 11,// - Defined by Adobe.
-//	= 1 << 12,// - Defined by Adobe.
-};
-enum headSTYLE {
-	bold		= 1 << 0,
-	italic		= 1 << 1,
-	underline	= 1 << 2,
-	outline		= 1 << 3,
-	shadow		= 1 << 4,
-	condensed	= 1 << 5,
-	extended	= 1 << 6,
-};
-enum headDIRECTION {
-	LEFTRIGHT_STRONG	= 1,	// Only strongly left to right glyphs
-	LEFTRIGHT			= 2,	// Like 1 but also contains neutrals
-	RIGHTLEFT_STRONG	= -1,	// Only strongly right to left glyphs
-	RIGHTLEFT			= -2,	// Like -1 but also contains neutrals
-};
+const headFLAGS = {
+	ybaseline: 			1 << 0,	// - y value of 0 specifies baseline
+	xlsb:				1 << 1,	// - x position of left most black bit is LSB
+	scaled_differ:		1 << 2,	// - scaled point size and actual point size will differ (i.e. 24 point glyph differs from 12 point glyph scaled by factor of 2)
+	int_scale:			1 << 3,	// - use integer scaling instead of fractional
+	ms0:				1 << 4,	// - (used by the Microsoft implementation of the TrueType scaler)
+	vertical:			1 << 5,	// - This bit should be set in fonts that are intended to e laid out vertically, and in which the glyphs have been drawn such that an x-coordinate of 0 corresponds to the desired vertical baseline.
+//:						1 << 6,	// - This bit must be set to zero.
+	arabic:				1 << 7,	// - This bit should be set if the font requires layout for correct linguistic rendering (e.g. Arabic fonts).
+	metamorphosis:		1 << 8,	// - This bit should be set for a GX font which has one or more metamorphosis effects designated as happening by default.
+	strong_rl:			1 << 9,	// - This bit should be set if the font contains any strong right-to-left glyphs.
+	indic:				1 << 10,// - This bit should be set if the font contains Indic-style rearrangement effects.
+//:						1 << 11,// - Defined by Adobe.
+//:						1 << 12,// - Defined by Adobe.
+} as const;
+//export type headFLAGS = typeof headFLAGS[keyof typeof headFLAGS];
+
+const headSTYLE = {
+	bold:				1 << 0,
+	italic:				1 << 1,
+	underline:			1 << 2,
+	outline:			1 << 3,
+	shadow:				1 << 4,
+	condensed:			1 << 5,
+	extended:			1 << 6,
+} as const;
+//export type headSTYLE = typeof headSTYLE[keyof typeof headSTYLE];
+
+const headDIRECTION = {
+	LEFTRIGHT_STRONG:	1,	// Only strongly left to right glyphs
+	LEFTRIGHT:			2,	// Like 1 but also contains neutrals
+	RIGHTLEFT_STRONG:	-1,	// Only strongly right to left glyphs
+	RIGHTLEFT:			-2,	// Like -1 but also contains neutrals
+} as const;
+//export type headDIRECTION = typeof headDIRECTION[keyof typeof headDIRECTION];
 
 const head = {
 	version:			u32,		//0x00010000 if (version 1.0)
 	font_revision:		u32,		//set by font manufacturer
 	checksum_adj:		u32,		//To compute: set it to 0, calculate the checksum for the 'head' table and put it in the table directory, sum the entire font as u32, then store B1B0AFBA - sum. The checksum for the 'head' table will not be wrong. That is OK.
 	magic:				u32,		//set to 0x5F0F3CF5
-	flags:				as<headFLAGS>(u16),
+	flags:				asV(u16, headFLAGS),
 	units_per_em:		u16,		//range from 64 to 16384
 	created:			datetime64,	//international date
 	modified:			datetime64,	//international date
 	//for all glyph bounding boxes
 	min:				vec2(s16),
 	max:				vec2(s16),
-	macStyle:			as<headSTYLE>(u16),
+	macStyle:			asV(u16, headSTYLE),
 	lowestRecPPEM:		u16,		//smallest readable size in pixels
-	fontDirectionHint:	as<headDIRECTION>(s16),		//0 Mixed directional glyphs
+	fontDirectionHint:	asV(s16, headDIRECTION),		//0 Mixed directional glyphs
 	indexToLocFormat:	s16,		//0 for short offsets, 1 for long
 	glyphDataFormat:	s16,		//0 for current format
 };
@@ -358,69 +368,64 @@ const maxp = {
 //	name	Naming Table	(TTF + OTF)
 //-----------------------------------------------------------------------------
 
-const enum ID {
-	ID_COPYRIGHT		= 0,	//Copyright notice.
-	ID_FAMILY			= 1,	//Font Family. This string is the font family name the user sees on Macintosh platforms.
-	ID_SUBFAMILY		= 2,	//Font Subfamily. This string is the font family the user sees on Macintosh platforms.
-	ID_IDENTIFICATION	= 3,	//Unique subfamily identification.
-	ID_FULLNAME			= 4,	//Full name of the font.
-	ID_VERSION			= 5,	//Version of the name table.
-	ID_PS_NAME			= 6,	//PostScript name of the font. Note: A font may have only one PostScript name and that name must be ASCII.
-	ID_TRADEMARK		= 7,	//Trademark notice.
-	ID_MANUFACTURER		= 8,	//Manufacturer name.
-	ID_DESIGNER			= 9,	//Designer; name of the designer of the typeface.
-	ID_DESCRIPTION		= 10,	//Description; description of the typeface. Can contain revision information, usage recommendations, history, features, and so on.
-	ID_VENDOR_URL		= 11,	//URL of the font vendor (with procotol, e.g., http://, ftp://). If a unique serial number is embedded in the URL, it can be used to register the font.
-	ID_DESIGNER_URL		= 12,	//URL of the font designer (with protocol, e.g., http://, ftp://)
-	ID_LICENSE			= 13,	//License description; description of how the font may be legally used, or different example scenarios for licensed use. This field should be written in plain language, not legalese.
-	ID_LICENSE_URL		= 14,	//License information URL, where additional licensing information can be found.
-	ID_RESERVED			= 15,	//Reserved
-	ID_PREF_FAMILY		= 16,	//Preferred Family (Windows only); In Windows, the Family name is displayed in the font menu; the Subfamily name is presented as the Style name. For historical reasons, font families have contained a maximum of four styles, but font designers may group more than four fonts to a single family. The Preferred Family and Preferred Subfamily IDs allow font designers to include the preferred family/subfamily groupings. These IDs are only present if they are different from IDs 1 and 2.
-	ID_PREF_SUBFAMILY	= 17,	//Preferred Subfamily (Windows only); In Windows, the Family name is displayed in the font menu; the Subfamily name is presented as the Style name. For historical reasons, font families have contained a maximum of four styles, but font designers may group more than four fonts to a single family. The Preferred Family and Preferred Subfamily IDs allow font designers to include the preferred family/subfamily groupings. These IDs are only present if they are different from IDs 1 and 2.
-	ID_COMPATIBLE		= 18,	//Compatible Full (Macintosh only); On the Macintosh, the menu name is constructed using the FOND resource. This usually matches the Full Name. If you want the name of the font to appear differently than the Full Name, you can insert the Compatible Full Name in ID 18. This name is not used by the Mac OS itself, but may be used by application developers (e.g., Adobe).
-	ID_SAMPLE			= 19,	//Sample text. This can be the font name, or any other text that the designer thinks is the best sample text to show what the font looks like.
+export const ID = {
+	COPYRIGHT:		0,	//Copyright notice.
+	FAMILY:			1,	//Font Family. This string is the font family name the user sees on Macintosh platforms.
+	SUBFAMILY:		2,	//Font Subfamily. This string is the font family the user sees on Macintosh platforms.
+	IDENTIFICATION:	3,	//Unique subfamily identification.
+	FULLNAME:		4,	//Full name of the font.
+	VERSION:		5,	//Version of the name table.
+	PS_NAME:		6,	//PostScript name of the font. Note: A font may have only one PostScript name and that name must be ASCII.
+	TRADEMARK:		7,	//Trademark notice.
+	MANUFACTURER:	8,	//Manufacturer name.
+	DESIGNER:		9,	//Designer; name of the designer of the typeface.
+	DESCRIPTION:	10,	//Description; description of the typeface. Can contain revision information, usage recommendations, history, features, and so on.
+	VENDOR_URL:		11,	//URL of the font vendor (with procotol, e.g., http://, ftp://). If a unique serial number is embedded in the URL, it can be used to register the font.
+	DESIGNER_URL:	12,	//URL of the font designer (with protocol, e.g., http://, ftp://)
+	LICENSE:		13,	//License description; description of how the font may be legally used, or different example scenarios for licensed use. This field should be written in plain language, not legalese.
+	LICENSE_URL:	14,	//License information URL, where additional licensing information can be found.
+	RESERVED:		15,	//Reserved
+	PREF_FAMILY:	16,	//Preferred Family (Windows only); In Windows, the Family name is displayed in the font menu; the Subfamily name is presented as the Style name. For historical reasons, font families have contained a maximum of four styles, but font designers may group more than four fonts to a single family. The Preferred Family and Preferred Subfamily IDs allow font designers to include the preferred family/subfamily groupings. These IDs are only present if they are different from IDs 1 and 2.
+	PREF_SUBFAMILY:	17,	//Preferred Subfamily (Windows only); In Windows, the Family name is displayed in the font menu; the Subfamily name is presented as the Style name. For historical reasons, font families have contained a maximum of four styles, but font designers may group more than four fonts to a single family. The Preferred Family and Preferred Subfamily IDs allow font designers to include the preferred family/subfamily groupings. These IDs are only present if they are different from IDs 1 and 2.
+	COMPATIBLE:		18,	//Compatible Full (Macintosh only); On the Macintosh, the menu name is constructed using the FOND resource. This usually matches the Full Name. If you want the name of the font to appear differently than the Full Name, you can insert the Compatible Full Name in ID 18. This name is not used by the Mac OS itself, but may be used by application developers (e.g., Adobe).
+	SAMPLE:			19,	//Sample text. This can be the font name, or any other text that the designer thinks is the best sample text to show what the font looks like.
 	//20 - 255	Reserved for future expansion.
-	ID_FONT_SPECIFIC	= 256,	// 256 - 32767	Font-specific names (layout features and settings, variations, track names, etc.)
-};
-
-const NameRecord = {
-	platformID:		as<PLATFORM>(u16),	//Platform identifier code.
-	encodingID:		as<ENCODING>(u16),	//Platform-specific encoding identifier.
-	languageID:		u16,	//Language identifier.
-	nameID:			as<ID>(u16),	//Name identifiers.
-	length:			u16,	//Name string length in bytes.
-	offset:			u16,	//Name string offset in bytes from stringOffset.
-};
+	FONT_SPECIFIC:	256,	// 256 - 32767	Font-specific names (layout features and settings, variations, track names, etc.)
+} as const;
+export type ID = (typeof ID)[keyof typeof ID];
 
 export class name extends bin.ReadClass({
 	format:			u16,	//Format selector. Set to 0.
 	count:			u16,	//The number of nameRecords in this name table.
 	stringOffset:	u16,	//Offset in bytes to the beginning of the name character strings.
+	names:	bin.Array('count', {
+		platformID:		asV(u16, PLATFORM),	//Platform identifier code.
+		encodingID:		asV(u16, ENCODING),	//Platform-specific encoding identifier.
+		languageID:		u16,						//Language identifier.
+		nameID:			asV(u16, ID),			//Name identifier
+		length:			u16,						//Name string length in bytes
+		offset:			u16,						//Name string offset in bytes from stringOffset.
+		name: bin.Offset(s => 
+			s.obj.obj.stringOffset + s.obj.offset, bin.Switch(s => s.obj.platformID, {
+			[PLATFORM.MACINTOSH]: bin.String(
+				s => s.obj.length),
+			[PLATFORM.WINDOWS]: bin.Switch(s =>
+				s.obj.encodingID, {
+				[ENCODING.WIN_UCS2]: bin.String(s => s.obj.length, 'utf16be', false, 1),
+				[ENCODING.WIN_UCS4]: bin.String(s => s.obj.length, 'utf32be', false, 1),
+			}),
+			[PLATFORM.UNICODE]: bin.String(s => s.obj.length),
+		})),
+	}),
 }) {
-	names:	string[] = [];
-
-	constructor(file: bin.stream) {
-		super(file);
-		const names	= bin.readn(file, NameRecord, this.count);
-		for (const r of names) {
-			const i = r.nameID;
-			switch (r.platformID) {
-				case PLATFORM.UNICODE:
-					break;
-				case PLATFORM.MACINTOSH:
-					//this.names[i] = bin.utils.decodeText(file.buffer_at(this.stringOffset + r.offset, r.length));
-					this.names[i] = bin.read(file, bin.Offset(this.stringOffset + r.offset, bin.String(r.length)));
-					break;
-				case PLATFORM.WINDOWS:
-					switch (r.encodingID) {
-						case ENCODING.WIN_UCS2:
-							//this.names[i] = bin.utils.decodeText(file.buffer_at(this.stringOffset + r.offset, r.length), 'utf16be');
-							this.names[i] = bin.read(file, bin.Offset(this.stringOffset + r.offset, bin.String(r.length, 'utf16be')));
-							break;
-					};
-					break;
-			}
-		}
+	get(nameID: ID, platformID?: PLATFORM, encodingID?: ENCODING, languageID?: number) {
+		const record = this.names.find(i =>
+			i.nameID === nameID
+			&& (platformID === undefined || i.platformID === platformID)
+			&& (encodingID === undefined || i.encodingID === encodingID)
+			&& (languageID === undefined || i.languageID === languageID)
+		);
+		return record?.name;
 	}
 }
 
@@ -626,16 +631,17 @@ const cmap = {
 //	gasp	Grid-fitting and Scan-conversion Procedure Table	(mostly TTF)
 //-----------------------------------------------------------------------------
 
-enum gaspBehavior {
-	grid_fit	= 1,	//Use gridfitting
-	do_gray		= 2,	//Use grayscale rendering
-};
+const gaspBehavior = {
+	grid_fit:	1,	//Use gridfitting
+	do_gray:	2,	//Use grayscale rendering
+} as const;
+//export type gaspBehavior = typeof gaspBehavior[keyof typeof gaspBehavior];
 
 const gasp = {
 	version:	u16,	//Version number (set to 0)
 	entries:	bin.Array(u16, {	//Sorted by ppem
 		mac_ppem: u16,	//Upper limit of range, in PPEM
-		behavior: as<gaspBehavior>(u16),	//Flags describing desired rasterizer behavior.
+		behavior: asV(u16, gaspBehavior),	//Flags describing desired rasterizer behavior.
 	})
 };
 
@@ -643,152 +649,154 @@ const gasp = {
 //	glyf	Glyph Data	(usually TTF)
 //-----------------------------------------------------------------------------
 
-const enum INSTRUCTION {
-	AA			= 0x7f,	// Adjust Angle
-	ABS			= 0x64,	// ABSolute value
-	ADD			= 0x60,	// ADD
-	ALIGNPTS	= 0x27,	// ALIGN Points
-	ALIGNRP		= 0x3c,	// ALIGN to Reference Point
-	AND			= 0x5c,	// logical AND
-	CALL		= 0x2b,	// CALL function
-	CEILING		= 0x67,	// CEILING
-	CINDEX		= 0x25,	// Copy the INDEXed element to the top of the stack
-	CLEAR		= 0x22,	// CLEAR the stack
-	DEBG		= 0x4f,	// DEBUG call
-	DELTAC1		= 0x73,	// DELTA exception C1
-	DELTAC2		= 0x74,	// DELTA exception C2
-	DELTAC3		= 0x75,	// DELTA exception C3
-	DELTAP1		= 0x5d,	// DELTA exception P1
-	DELTAP2		= 0x71,	// DELTA exception P2
-	DELTAP3		= 0x72,	// DELTA exception P3
-	DEPTH		= 0x24,	// DEPTH of the stack
-	DIV			= 0x62,	// DIVide
-	DUP			= 0x20,	// DUPlicate top stack element
-	EIF			= 0x59,	// End IF
-	ELSE		= 0x1b,	// ELSE clause
-	ENDF		= 0x2d,	// END Function definition
-	EQ			= 0x54,	// EQual
-	EVEN		= 0x57,	// EVEN
-	FDEF		= 0x2c,	// Function DEFinition
-	FLIPOFF		= 0x4e,	// set the auto FLIP Boolean to OFF
-	FLIPON		= 0x4d,	// set the auto FLIP Boolean to ON
-	FLIPPT		= 0x80,	// FLIP PoinT
-	FLIPRGOFF	= 0x82,	// FLIP RanGe OFF
-	FLIPRGON	= 0x81,	// FLIP RanGe ON
-	FLOOR		= 0x66,	// FLOOR
-	GC			= 0x46,	//-0x47[a] Get Coordinate projected onto the projection vector
-	GETINFO		= 0x88,	// GET INFOrmation
-	GFV			= 0x0d,	// Get Freedom Vector
-	GPV			= 0x0c,	// Get Projection Vector
-	GT			= 0x52,	// Greater Than
-	GTEQ		= 0x53,	// Greater Than or EQual
-	IDEF		= 0x89,	// Instruction DEFinition
-	IF			= 0x58,	// IF test
-	INSTCTRL	= 0x8e,	// INSTRuction execution ConTRoL
-	IP			= 0x39,	// Interpolate Point
-	ISECT		= 0x0f,	// moves point p to the InterSECTion of two lines
-	IUP			= 0x30,	//-0x31[a] Interpolate Untouched Points through the outline
-	JMPR		= 0x1c,	// JuMP Relative
-	JROF		= 0x79,	// Jump Relative On False
-	JROT		= 0x78,	// Jump Relative On True
-	LOOPCALL	= 0x2a,	// LOOP and CALL function
-	LT			= 0x50,	// Less Than
-	LTEQ		= 0x51,	// Less Than or Equal
-	MAX			= 0x8b,	// MAXimum of top two stack elements
-	MD			= 0x49,	//-0x4a[a] Measure Distance
-	MDAP		= 0x2e,	//-0x2f[a] Move Direct Absolute Point
-	MDRP		= 0xc0,	//-0xdf[abcde] Move Direct Relative Point
-	MIAP		= 0x3e,	//-0x3f[a] Move Indirect Absolute Point
-	MIN			= 0x8c,	// MINimum of top two stack elements
-	MINDEX		= 0x26,	// Move the INDEXed element to the top of the stack
-	MIRP		= 0xe0,	//-0xff[abcde] Move Indirect Relative Point
-	MPPEM		= 0x4b,	// Measure Pixels Per EM
-	MPS			= 0x4c,	// Measure Point Size
-	MSIRP		= 0x3a,	//-0x3b[a] Move Stack Indirect Relative Point
-	MUL			= 0x63,	// MULtiply
-	NEG			= 0x65,	// NEGate
-	NEQ			= 0x55,	// Not EQual
-	NOT			= 0x5c,	// logical NOT
-	NPUSHB		= 0x40,	// PUSH N Bytes
-	NPUSHW		= 0x41,	// PUSH N Words
-	NROUND		= 0x6c,	//-0x6f[ab] No ROUNDing of value
-	ODD			= 0x56,	// ODD
-	OR			= 0x5b,	// logical OR
-	POP			= 0x21,	// POP top stack element
-	PUSHB		= 0xb0,	//-0xb7[abc] PUSH Bytes
-	PUSHW		= 0xb8,	//-0xbf[abc] PUSH Words
-	RCVT		= 0x45,	// Read Control Value Table entry
-	RDTG		= 0x7d,	// Round Down To Grid
-	ROFF		= 0x7a,	// Round OFF
-	ROLL		= 0x8a,	//ROLL the top three stack elements
-	ROUND		= 0x68,	//-0x6b[ab] ROUND value
-	RS			= 0x43,	// Read Store
-	RTDG		= 0x3d,	// Round To Double Grid
-	RTG			= 0x18,	// Round To Grid
-	RTHG		= 0x19,	// Round To Half Grid
-	RUTG		= 0x7c,	// Round Up To Grid
-	S45ROUND	= 0x77,	// Super ROUND 45 degrees
-	SANGW		= 0x7e,	// Set Angle Weight
-	SCANCTRL	= 0x85,	// SCAN conversion ConTRoL
-	SCANTYPE	= 0x8d,	// SCANTYPE
-	SCFS		= 0x48,	// Sets Coordinate From the Stack using projection vector and freedom vector
-	SCVTCI		= 0x1d,	// Set Control Value Table Cut-In
-	SDB			= 0x5e,	// Set Delta Base in the graphics state
-	SDPVTL		= 0x86,	//-0x87[a] Set Dual Projection Vector To Line
-	SDS			= 0x5f,	// Set Delta Shift in the graphics state
-	SFVFS		= 0x0b,	// Set Freedom Vector From Stack
-	SFVTCA		= 0x04,	//-0x05[a] Set Freedom Vector To Coordinate Axis
-	SFVTL		= 0x08,	//-0x09[a] Set Freedom Vector To Line
-	SFVTP		= 0x0e,	// Set Freedom Vector To Projection Vector
-	SHC			= 0x34,	//-0x35[a] SHift Contour using reference point
-	SHP			= 0x32,	//-0x33[a] SHift Point using reference point
-	SHPIX		= 0x38,	// SHift point by a PIXel amount
-	SHZ			= 0x36,	//-0x37[a] SHift Zone using reference point
-	SLOOP		= 0x17,	// Set LOOP variable
-	SMD			= 0x1a,	// Set Minimum Distance
-	SPVFS		= 0x0a,	// Set Projection Vector From Stack
-	SPVTCA		= 0x02,	//-0x03[a] Set Projection Vector To Coordinate Axis
-	SPVTL		= 0x06,	//-0x07[a] Set Projection Vector To Line
-	SROUND		= 0x76,	// Super ROUND
-	SRP0		= 0x10,	// Set Reference Point 0
-	SRP1		= 0x11,	// Set Reference Point 1
-	SRP2		= 0x12,	// Set Reference Point 2
-	SSW			= 0x1f,	// Set Single Width
-	SSWCI		= 0x1e,	// Set Single Width Cut-In
-	SUB			= 0x61,	// SUBtract
-	SVTCA		= 0x00,	//-0x01[a] Set freedom and projection Vectors To Coordinate Axis
-	SWAP		= 0x23,	// SWAP the top two elements on the stack
-	SZP0		= 0x13,	// Set Zone Pointer 0
-	SZP1		= 0x14,	// Set Zone Pointer 1
-	SZP2		= 0x15,	// Set Zone Pointer 2
-	SZPS		= 0x16,	// Set Zone PointerS
-	UTP			= 0x29,	// UnTouch Point
-	WCVTF		= 0x70,	// Write Control Value Table in Funits
-	WCVTP		= 0x44,	// Write Control Value Table in Pixel units
-	WS			= 0x42,	// Write Store
-};
+const INSTRUCTION = {
+	AA:			0x7f,	// Adjust Angle
+	ABS:		0x64,	// ABSolute value
+	ADD:		0x60,	// ADD
+	ALIGNPTS:	0x27,	// ALIGN Points
+	ALIGNRP:	0x3c,	// ALIGN to Reference Point
+	AND:		0x5c,	// logical AND
+	CALL:		0x2b,	// CALL function
+	CEILING:	0x67,	// CEILING
+	CINDEX:		0x25,	// Copy the INDEXed element to the top of the stack
+	CLEAR:		0x22,	// CLEAR the stack
+	DEBG:		0x4f,	// DEBUG call
+	DELTAC1:	0x73,	// DELTA exception C1
+	DELTAC2:	0x74,	// DELTA exception C2
+	DELTAC3:	0x75,	// DELTA exception C3
+	DELTAP1:	0x5d,	// DELTA exception P1
+	DELTAP2:	0x71,	// DELTA exception P2
+	DELTAP3:	0x72,	// DELTA exception P3
+	DEPTH:		0x24,	// DEPTH of the stack
+	DIV:		0x62,	// DIVide
+	DUP:		0x20,	// DUPlicate top stack element
+	EIF:		0x59,	// End IF
+	ELSE:		0x1b,	// ELSE clause
+	ENDF:		0x2d,	// END Function definition
+	EQ:			0x54,	// EQual
+	EVEN:		0x57,	// EVEN
+	FDEF:		0x2c,	// Function DEFinition
+	FLIPOFF:	0x4e,	// set the auto FLIP Boolean to OFF
+	FLIPON:		0x4d,	// set the auto FLIP Boolean to ON
+	FLIPPT:		0x80,	// FLIP PoinT
+	FLIPRGOFF:	0x82,	// FLIP RanGe OFF
+	FLIPRGON:	0x81,	// FLIP RanGe ON
+	FLOOR:		0x66,	// FLOOR
+	GC:			0x46,	//-0x47[a] Get Coordinate projected onto the projection vector
+	GETINFO:	0x88,	// GET INFOrmation
+	GFV:		0x0d,	// Get Freedom Vector
+	GPV:		0x0c,	// Get Projection Vector
+	GT:			0x52,	// Greater Than
+	GTEQ:		0x53,	// Greater Than or EQual
+	IDEF:		0x89,	// Instruction DEFinition
+	IF:			0x58,	// IF test
+	INSTCTRL:	0x8e,	// INSTRuction execution ConTRoL
+	IP:			0x39,	// Interpolate Point
+	ISECT:		0x0f,	// moves point p to the InterSECTion of two lines
+	IUP:		0x30,	//-0x31[a] Interpolate Untouched Points through the outline
+	JMPR:		0x1c,	// JuMP Relative
+	JROF:		0x79,	// Jump Relative On False
+	JROT:		0x78,	// Jump Relative On True
+	LOOPCALL:	0x2a,	// LOOP and CALL function
+	LT:			0x50,	// Less Than
+	LTEQ:		0x51,	// Less Than or Equal
+	MAX:		0x8b,	// MAXimum of top two stack elements
+	MD:			0x49,	//-0x4a[a] Measure Distance
+	MDAP:		0x2e,	//-0x2f[a] Move Direct Absolute Point
+	MDRP:		0xc0,	//-0xdf[abcde] Move Direct Relative Point
+	MIAP:		0x3e,	//-0x3f[a] Move Indirect Absolute Point
+	MIN:		0x8c,	// MINimum of top two stack elements
+	MINDEX:		0x26,	// Move the INDEXed element to the top of the stack
+	MIRP:		0xe0,	//-0xff[abcde] Move Indirect Relative Point
+	MPPEM:		0x4b,	// Measure Pixels Per EM
+	MPS:		0x4c,	// Measure Point Size
+	MSIRP:		0x3a,	//-0x3b[a] Move Stack Indirect Relative Point
+	MUL:		0x63,	// MULtiply
+	NEG:		0x65,	// NEGate
+	NEQ:		0x55,	// Not EQual
+	NOT:		0x5c,	// logical NOT
+	NPUSHB:		0x40,	// PUSH N Bytes
+	NPUSHW:		0x41,	// PUSH N Words
+	NROUND:		0x6c,	//-0x6f[ab] No ROUNDing of value
+	ODD:		0x56,	// ODD
+	OR:			0x5b,	// logical OR
+	POP:		0x21,	// POP top stack element
+	PUSHB:		0xb0,	//-0xb7[abc] PUSH Bytes
+	PUSHW:		0xb8,	//-0xbf[abc] PUSH Words
+	RCVT:		0x45,	// Read Control Value Table entry
+	RDTG:		0x7d,	// Round Down To Grid
+	ROFF:		0x7a,	// Round OFF
+	ROLL:		0x8a,	//ROLL the top three stack elements
+	ROUND:		0x68,	//-0x6b[ab] ROUND value
+	RS:			0x43,	// Read Store
+	RTDG:		0x3d,	// Round To Double Grid
+	RTG:		0x18,	// Round To Grid
+	RTHG:		0x19,	// Round To Half Grid
+	RUTG:		0x7c,	// Round Up To Grid
+	S45ROUND:	0x77,	// Super ROUND 45 degrees
+	SANGW:		0x7e,	// Set Angle Weight
+	SCANCTRL:	0x85,	// SCAN conversion ConTRoL
+	SCANTYPE:	0x8d,	// SCANTYPE
+	SCFS:		0x48,	// Sets Coordinate From the Stack using projection vector and freedom vector
+	SCVTCI:		0x1d,	// Set Control Value Table Cut-In
+	SDB:		0x5e,	// Set Delta Base in the graphics state
+	SDPVTL:		0x86,	//-0x87[a] Set Dual Projection Vector To Line
+	SDS:		0x5f,	// Set Delta Shift in the graphics state
+	SFVFS:		0x0b,	// Set Freedom Vector From Stack
+	SFVTCA:		0x04,	//-0x05[a] Set Freedom Vector To Coordinate Axis
+	SFVTL:		0x08,	//-0x09[a] Set Freedom Vector To Line
+	SFVTP:		0x0e,	// Set Freedom Vector To Projection Vector
+	SHC:		0x34,	//-0x35[a] SHift Contour using reference point
+	SHP:		0x32,	//-0x33[a] SHift Point using reference point
+	SHPIX:		0x38,	// SHift point by a PIXel amount
+	SHZ:		0x36,	//-0x37[a] SHift Zone using reference point
+	SLOOP:		0x17,	// Set LOOP variable
+	SMD:		0x1a,	// Set Minimum Distance
+	SPVFS:		0x0a,	// Set Projection Vector From Stack
+	SPVTCA:		0x02,	//-0x03[a] Set Projection Vector To Coordinate Axis
+	SPVTL:		0x06,	//-0x07[a] Set Projection Vector To Line
+	SROUND:		0x76,	// Super ROUND
+	SRP0:		0x10,	// Set Reference Point 0
+	SRP1:		0x11,	// Set Reference Point 1
+	SRP2:		0x12,	// Set Reference Point 2
+	SSW:		0x1f,	// Set Single Width
+	SSWCI:		0x1e,	// Set Single Width Cut-In
+	SUB:		0x61,	// SUBtract
+	SVTCA:		0x00,	//-0x01[a] Set freedom and projection Vectors To Coordinate Axis
+	SWAP:		0x23,	// SWAP the top two elements on the stack
+	SZP0:		0x13,	// Set Zone Pointer 0
+	SZP1:		0x14,	// Set Zone Pointer 1
+	SZP2:		0x15,	// Set Zone Pointer 2
+	SZPS:		0x16,	// Set Zone PointerS
+	UTP:		0x29,	// UnTouch Point
+	WCVTF:		0x70,	// Write Control Value Table in Funits
+	WCVTP:		0x44,	// Write Control Value Table in Pixel units
+	WS:			0x42,	// Write Store
+} as const;
+type INSTRUCTION = typeof INSTRUCTION[keyof typeof INSTRUCTION];
 
-const enum SIMPLE {
-	ON_CURVE			= 1 << 0,	//If set, the point is on the curve;Otherwise, it is off the curve.
-	SHORT_X				= 1 << 1,	//the corresponding x-coordinate is 1 byte
-	SHORT_Y				= 1 << 2,	//the corresponding y-coordinate is 1 byte
-	REPEAT				= 1 << 3,	//If set, the next byte specifies the number of additional times this set of flags is to be repeated
-	SAME_X				= 1 << 4,	//If short_x, this is a sign bit (clear is -ve); else if set the current x is the same as the previous x
-	SAME_Y				= 1 << 5,	//If short_y, this is a sign bit (clear is -ve); else if set the current y is the same as the previous y
-	OVERLAP				= 1 << 6,	//contours in the glyph description could overlap. When used, it must be set on the first flag byte for the glyph
-};
-const enum COMPOUND {
-	ARG12_WORDS			= 1 << 0,	//the arguments are words; else they are bytes.
-	ARGS_XY				= 1 << 1,	//the arguments are xy values; else they are points.
-	ROUND_TO_GRID		= 1 << 2,	//round the xy values to grid
-	HAVE_SCALE			= 1 << 3,	//there is a simple scale for the component
-	MORE_COMPONENTS		= 1 << 5,	//at least one additional glyph follows this one.
-	X_AND_Y_SCALE		= 1 << 6,	//the x direction will use a different scale than the y direction.
-	TWO_BY_TWO			= 1 << 7,	//there is a 2-by-2 transformation
-	HAVE_INSTRUCTIONS	= 1 << 8,	//instructions for the component character follow the last component.
-	USE_MY_METRICS		= 1 << 9,	//Use metrics from this component for the compound glyph.
-	OVERLAP				= 1 << 10,	//the components of this compound glyph overlap.
-};
+const SIMPLE = {
+	ON_CURVE:			1 << 0,	//If set, the point is on the curve;Otherwise, it is off the curve.
+	SHORT_X:			1 << 1,	//the corresponding x-coordinate is 1 byte
+	SHORT_Y:			1 << 2,	//the corresponding y-coordinate is 1 byte
+	REPEAT:				1 << 3,	//If set, the next byte specifies the number of additional times this set of flags is to be repeated
+	SAME_X:				1 << 4,	//If short_x, this is a sign bit (clear is -ve); else if set the current x is the same as the previous x
+	SAME_Y:				1 << 5,	//If short_y, this is a sign bit (clear is -ve); else if set the current y is the same as the previous y
+	OVERLAP:			1 << 6,	//contours in the glyph description could overlap. When used, it must be set on the first flag byte for the glyph
+} as const;
+
+const COMPOUND = {
+	ARG12_WORDS:		1 << 0,	//the arguments are words; else they are bytes.
+	ARGS_XY:			1 << 1,	//the arguments are xy values; else they are points.
+	ROUND_TO_GRID:		1 << 2,	//round the xy values to grid
+	HAVE_SCALE:			1 << 3,	//there is a simple scale for the component
+	MORE_COMPONENTS:	1 << 5,	//at least one additional glyph follows this one.
+	X_AND_Y_SCALE:		1 << 6,	//the x direction will use a different scale than the y direction.
+	TWO_BY_TWO:			1 << 7,	//there is a 2-by-2 transformation
+	HAVE_INSTRUCTIONS:	1 << 8,	//instructions for the component character follow the last component.
+	USE_MY_METRICS:		1 << 9,	//Use metrics from this component for the compound glyph.
+	OVERLAP:			1 << 10,	//the components of this compound glyph overlap.
+} as const;
 
 class Instructions extends Uint8Array {
 	[index: number]: INSTRUCTION;
@@ -1176,15 +1184,17 @@ class Coverage extends bin.Class({coverage: bin.Switch(u16, {
 	}
 }
 
-const enum LookupFlag {
-	RIGHT_TO_LEFT				= 0x0001,	//This bit relates only to the correct processing of the cursive attachment lookup type (GPOS lookup type 3). When this bit is set, the last glyph in a given sequence to which the cursive attachment lookup is applied, will be positioned on the baseline.
-	IGNORE_BASE_GLYPHS			= 0x0002,	//If set, skips over base glyphs
-	IGNORE_LIGATURES			= 0x0004,	//If set, skips over ligatures
-	IGNORE_MARKS				= 0x0008,	//If set, skips over all combining marks
-	USE_MARK_FILTERING_SET		= 0x0010,	//If set, indicates that the lookup table structure is followed by a MarkFilteringSet field. The layout engine skips over all mark glyphs not in the mark filtering set indicated.
-	reserved					= 0x00E0,	//For future use (Set to zero)
-	MARK_ATTACHMENT_TYPE_MASK	= 0xFF00,	//If not zero, skips over all marks of attachment type different from specified.
-};
+const LookupFlag = {
+	RIGHT_TO_LEFT:				0x0001,	//This bit relates only to the correct processing of the cursive attachment lookup type (GPOS lookup type 3). When this bit is set, the last glyph in a given sequence to which the cursive attachment lookup is applied, will be positioned on the baseline.
+	IGNORE_BASE_GLYPHS:			0x0002,	//If set, skips over base glyphs
+	IGNORE_LIGATURES:			0x0004,	//If set, skips over ligatures
+	IGNORE_MARKS:				0x0008,	//If set, skips over all combining marks
+	USE_MARK_FILTERING_SET:		0x0010,	//If set, indicates that the lookup table structure is followed by a MarkFilteringSet field. The layout engine skips over all mark glyphs not in the mark filtering set indicated.
+	reserved:					0x00E0,	//For future use (Set to zero)
+	MARK_ATTACHMENT_TYPE_MASK:	0xFF00,	//If not zero, skips over all marks of attachment type different from specified.
+} as const;
+//type LookupFlag = typeof LookupFlag[keyof typeof LookupFlag];
+
 /*
 type AllValues<T> = T extends Record<number, Record<number, infer U>> ? U : never;
 
@@ -1193,7 +1203,7 @@ function LookupList0<T extends Record<number, Record<number, binary.Type>>>(tabl
 
 	return binary.Array(u16, binary.Offset(u16, {
 		type:	u16,
-		flag:	as<LookupFlag>(u16),
+		flag:	asV(u16, LookupFlag),
 		table:	binary.Switch(s => s.obj.type, Object.fromEntries(Object.entries(tables).map(([k, v]) => [k, binary.Array(u16, binary.Offset(u16, binary.Switch(u16, v as A)))]))),
 		//u16	markFilteringSet;	//Index (base 0) into GDEF mark glyph sets structure. This field is only present if the USE_MARK_FILTERING_SET lookup flag is set.
 	}));
@@ -1201,7 +1211,7 @@ function LookupList0<T extends Record<number, Record<number, binary.Type>>>(tabl
 function LookupList2<S, T extends Record<number, Record<number, binary.TypeT<S>>> = Record<number, Record<number, binary.TypeT<S>>>>(tables: T) {
 	return binary.Array(u16, binary.Offset(u16, {
 		type:	u16,
-		flag:	as<LookupFlag>(u16),
+		flag:	asV(u16, LookupFlag),
 		table:	binary.Switch(s => s.obj.type, Object.fromEntries(Object.entries(tables).map(([k, v]) => [k, binary.Array(u16, binary.Offset(u16, binary.Switch(u16, v)))]))),
 		//u16	markFilteringSet;	//Index (base 0) into GDEF mark glyph sets structure. This field is only present if the USE_MARK_FILTERING_SET lookup flag is set.
 	}));
@@ -1212,7 +1222,7 @@ function LookupList2<S, T extends Record<number, Record<number, binary.TypeT<S>>
 function LookupList<A>(tables: Record<number, Record<number, bin.Type>>) {
 	return bin.Array(u16, bin.Offset(u16, {
 		type:	u16,
-		flag:	as<LookupFlag>(u16),
+		flag:	asV(u16, LookupFlag),
 		table:	as<Record<number, A>>(bin.Switch(s => s.obj.type, Object.fromEntries(Object.entries(tables).map(([k, v]) => [k, bin.Array(u16, bin.Offset(u16, bin.Switch(u16, v)))])))),
 		//u16	markFilteringSet;	//Index (base 0) into GDEF mark glyph sets structure. This field is only present if the USE_MARK_FILTERING_SET lookup flag is set.
 	}));
@@ -1432,17 +1442,18 @@ const GSUB = {
 //	GPOS	Glyph Positioning Table	(OTF)
 //-----------------------------------------------------------------------------
 
-const enum ValueFormat {
-	X_PLACEMENT			= 0x0001,	//Includes horizontal adjustment for placement
-	Y_PLACEMENT			= 0x0002,	//Includes vertical adjustment for placement
-	X_ADVANCE			= 0x0004,	//Includes horizontal adjustment for advance
-	Y_ADVANCE			= 0x0008,	//Includes vertical adjustment for advance
-	X_PLACEMENT_DEVICE	= 0x0010,	//Includes Device table (non-variable font) / VariationIndex table (variable font) for horizontal placement
-	Y_PLACEMENT_DEVICE	= 0x0020,	//Includes Device table (non-variable font) / VariationIndex table (variable font) for vertical placement
-	X_ADVANCE_DEVICE	= 0x0040,	//Includes Device table (non-variable font) / VariationIndex table (variable font) for horizontal advance
-	Y_ADVANCE_DEVICE	= 0x0080,	//Includes Device table (non-variable font) / VariationIndex table (variable font) for vertical advance
-	Reserved			= 0xFF00,	//For future use (set to zero)
-}
+const ValueFormat = {
+	X_PLACEMENT:		0x0001,	//Includes horizontal adjustment for placement
+	Y_PLACEMENT:		0x0002,	//Includes vertical adjustment for placement
+	X_ADVANCE:			0x0004,	//Includes horizontal adjustment for advance
+	Y_ADVANCE:			0x0008,	//Includes vertical adjustment for advance
+	X_PLACEMENT_DEVICE:	0x0010,	//Includes Device table (non-variable font) / VariationIndex table (variable font) for horizontal placement
+	Y_PLACEMENT_DEVICE:	0x0020,	//Includes Device table (non-variable font) / VariationIndex table (variable font) for vertical placement
+	X_ADVANCE_DEVICE:	0x0040,	//Includes Device table (non-variable font) / VariationIndex table (variable font) for horizontal advance
+	Y_ADVANCE_DEVICE:	0x0080,	//Includes Device table (non-variable font) / VariationIndex table (variable font) for vertical advance
+	Reserved:			0xFF00,	//For future use (set to zero)
+} as const;
+type ValueFormat = typeof ValueFormat[keyof typeof ValueFormat];
 
 function ValueRecord(format: ValueFormat) {
 	return {

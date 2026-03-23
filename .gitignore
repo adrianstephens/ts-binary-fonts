@@ -3,3 +3,4 @@ dist
 scripts/transform.ts
 *.tgz
 *.tsbuildinfo
+.vscode/edge-debug-profile

@@ -6,13 +6,24 @@
 		"url": "git+https://github.com/adrianstephens/ts-binary-fonts.git"
 	},
 	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"browser": "./dist/browser.js",
+	"exports": {
+		".": {
+			"browser": "./dist/browser.js",
+			"default": "./dist/index.js"
+		},
+		"./browser": "./dist/browser.js"
+	},
 	"files": [
 		"dist/**/*.{js,d.ts}",
 		"README.md"
 	],
 	"scripts": {
-		"postinstall": "ts-patch install && copy-file node_modules/@isopodlabs/binary/scripts/transform.ts scripts/transform.ts",
-		"build": "tsc",
+		"prepare": "ts-patch install && copy-file node_modules/@isopodlabs/binary/scripts/transform.ts scripts/transform.ts",
+		"build": "tsc -p ./",
+		"build:browser": "esbuild src/browser.ts --bundle --minify --platform=browser --format=esm --target=es2022 --sourcemap --outfile=dist/browser.mjs",
+		"serve:test": "node test/serve.js",
 		"watch": "tsc -watch -p ./",
 		"lint": "eslint \"src/**/*.ts\"",
 		"link": "npm link @isopodlabs/binary @isopodlabs/maths @isopodlabs/xml"
@@ -30,6 +41,7 @@
 		"@types/node": "^22.13.8",
 		"@typescript-eslint/eslint-plugin": "^8.26.0",
 		"@typescript-eslint/parser": "^8.26.0",
+		"esbuild": "^0.27.4",
 		"eslint": "^9.21.0",
 		"ts-node": "^10.9.2",
 		"ts-patch": "^3.3.0",

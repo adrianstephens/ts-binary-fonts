@@ -7,15 +7,60 @@
 			"script": "build",
 			"group": "build",
 			"problemMatcher": "$tsc",
-			"detail": "tsc"
 		},
 		{
 			"type": "npm",
+			"label": "npm: watch",
 			"script": "watch",
 			"group": "build",
 			"problemMatcher": "$tsc-watch",
-			"label": "npm: watch",
 			"isBackground": true
+		},
+		{
+			"type": "npm",
+			"label": "npm: build:browser",
+			"script": "build:browser",
+			"group": "build",
+			"problemMatcher": "$tsc",
+		},
+		{
+			"type": "npm",
+			"script": "serve:test",
+			"label": "npm: serve:test",
+			"isBackground": true,
+			"problemMatcher": {
+				"owner": "custom",
+				"pattern": {
+					"regexp": ".*"
+				},
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": ".*",
+					"endsPattern": "Server ready at http://127\\.0\\.0\\.1:8123/test/browser-test\\.html"
+				}
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated"
+			}
+		},
+		{
+			"type": "shell",
+			"label": "launch browser test: edge",
+			"windows": {
+				"command": "start msedge --new-window --remote-debugging-port=9222 --user-data-dir=\"${workspaceFolder}\\.vscode\\edge-debug-profile\" http://127.0.0.1:8123/test/browser-test.html"
+			},
+			"problemMatcher": [],
+			"dependsOn": ["prepare browser test"]
+		},
+		{
+			"type": "shell",
+			"label": "launch browser test: chrome",
+			"windows": {
+				"command": "start chrome --new-window --remote-debugging-port=9223 --user-data-dir=\"${workspaceFolder}\\.vscode\\chrome-debug-profile\" http://127.0.0.1:8123/test/browser-test.html"
+			},
+			"problemMatcher": [],
+			"dependsOn": ["prepare browser test"]
 		},
 		{
 			"type": "shell",
@@ -25,7 +70,7 @@
 				"command": "git add . & npm version ${input:version} --force",
 			},
 			"problemMatcher": [],
-			"dependsOn": "npm: build"
+			"dependsOn": ["npm: build", "npm: build:browser"]
 		},
 		{
 			"type": "shell",
@@ -39,7 +84,13 @@
 			"label": "PACKAGE",
 			"command": "npm pack",
 			"problemMatcher": [],
-			"dependsOn": "npm: build"
+			"dependsOn": ["npm: build", "npm: build:browser"]
+		},
+		{
+			"type": "shell",
+			"label": "prepare browser test",
+			"dependsOn": ["npm: build", "npm: build:browser", "npm: serve:test"],
+			"problemMatcher": []
 		},
 	],
 	"inputs": [

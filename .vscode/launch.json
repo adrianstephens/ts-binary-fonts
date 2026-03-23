@@ -5,21 +5,57 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "node",
-            "request": "launch",
-            "name": "Test fonts",
-            "runtimeExecutable": "ts-node",
-            "cwd": "${workspaceFolder}",
-            "args": ["tests/testfont.ts"],
-            "sourceMaps": true,
-            "preLaunchTask": "npm: build"
-        },
-        {
             "type": "node-terminal",
             "name": "Debug Transform",
             "request": "launch",
             "command": "npm run build",
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "msedge",
+            "request": "launch",
+            "name": "Browser Test (Edge)",
+            "url": "http://127.0.0.1:8123/test/browser-test.html",
+            "webRoot": "${workspaceFolder}",
+            "preLaunchTask": "prepare browser test",
+            "sourceMaps": true,
+            "skipFiles": ["<node_internals>/**"],
+            "userDataDir": true,
+            "runtimeArgs": ["--new-window"]
+        },
+        {
+            "type": "msedge",
+            "request": "attach",
+            "name": "Attach Browser Test (Edge)",
+            "url": "http://127.0.0.1:8123/test/browser-test.html",
+            "port": 9222,
+            "webRoot": "${workspaceFolder}",
+            "preLaunchTask": "launch browser test: edge",
+            "sourceMaps": true,
+            "skipFiles": ["<node_internals>/**"]
+        },
+        {
+            "type": "chrome",
+            "request": "launch",
+            "name": "Browser Test (Chrome)",
+            "url": "http://127.0.0.1:8123/test/browser-test.html",
+            "webRoot": "${workspaceFolder}",
+            "preLaunchTask": "prepare browser test",
+            "sourceMaps": true,
+            "skipFiles": ["<node_internals>/**"],
+            "userDataDir": true,
+            "runtimeArgs": ["--new-window"]
+        },
+        {
+            "type": "chrome",
+            "request": "attach",
+            "name": "Attach Browser Test (Chrome)",
+            "url": "http://127.0.0.1:8123/test/browser-test.html",
+            "port": 9223,
+            "webRoot": "${workspaceFolder}",
+            "preLaunchTask": "launch browser test: chrome",
+            "sourceMaps": true,
+            "skipFiles": ["<node_internals>/**"]
         }
     ]
 }
