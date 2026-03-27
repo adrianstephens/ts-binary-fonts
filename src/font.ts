@@ -592,7 +592,7 @@ class cmapVariationSeq extends bin.Class({
 	variations:	bin.Array(u32, {
 		selector:	u24,
 		default_uvs:		bin.Offset(u32, {
-			ranges:		bin.Array(u32, bin.as(u32, bin.BitFields({startUnicodeValue: 24, additionalCount: 8})))
+			ranges:		bin.Array(u32, bin.as(u32, bin.BitFields(32, {startUnicodeValue: 24, additionalCount: 8})))
 		}, true),
 		non_default_uvs:	bin.Offset(u32, {
 			mappings:	bin.Array(u32, {unicodeValue: u24, glyphID: u16})
