@@ -32,10 +32,10 @@ export const CPAL = {
 	colorRecordIndices:	bin.RemainingArray(u16),	//	Index of each palette's first color record in the combined color record array.
 
 	v1:	bin.Optional(s => s.obj.version >= 1, {
-		types:				bin.Offset(u32, bin.asEnum(u16, {
+		types:				bin.Offset(u32, bin.as(u16, bin.EnumString( {
 			USABLE_WITH_LIGHT_BACKGROUND:	0x0001,
 			USABLE_WITH_DARK_BACKGROUND:	0x0002
-		})),
+		}))),
 		paletteLabels:		bin.Offset(u32, u16),	//Array of 'name' table IDs (typically in the font-specific name ID range) that specify user interface strings associated with each palette. Use 0xFFFF if no name ID is provided for a palette.
 		paletteEntryLabels:	bin.Offset(u32, u16),	//Array of 'name' table IDs (typically in the font-specific name ID range) that specify user interface strings associated with each palette entry, e.g. 'Outline', 'Fill'. This set of palette entry labels applies to all palettes in the font. Use 0xFFFF if no name ID is provided for a palette entry.
 	}),

@@ -26,7 +26,8 @@
 		"serve:test": "node test/serve.js",
 		"watch": "tsc -watch -p ./",
 		"lint": "eslint \"src/**/*.ts\"",
-		"link": "npm link @isopodlabs/binary @isopodlabs/maths @isopodlabs/xml"
+		"link": "npm link @isopodlabs/binary @isopodlabs/maths @isopodlabs/xml",
+		"update": "npm install @isopodlabs/binary @isopodlabs/maths @isopodlabs/xml"
 	},
 	"keywords": [
 		"binary",
@@ -48,9 +49,9 @@
 		"typescript-eslint": "^8.26.0"
 	},
 	"dependencies": {
-		"@isopodlabs/binary": "^1.7.1",
+		"@isopodlabs/binary": "^1.10.2",
 		"@isopodlabs/maths": "^1.0.0",
 		"@isopodlabs/xml": "^1.2.0"
 	},
-	"version": "0.5.0"
+	"version": "0.6.0"
 }

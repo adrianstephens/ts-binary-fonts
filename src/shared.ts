@@ -3,7 +3,6 @@ import {Font, tableTypes, loadLocs, loadMetrics, ID} from './font';
 import {WOFF, WOFF2} from './woff';
 
 export {Font} from './font';
-export {configureCompression, setBrotli, setInflate} from './runtime';
 
 const TAG		= binary.String(4);
 const u16 		= binary.UINT16_BE;

@@ -3,7 +3,6 @@ import * as bin from '@isopodlabs/binary';
 import {Font, vec2, Glyph, loadLocs, loadMetrics, readComposite, tableTypes} from './font';
 import {curveVertex, curveExtent, parseCurve, makeCurveVertex} from './curves';
 import {float2} from '@isopodlabs/maths/vector';
-import {brotli, decodeText, inflate} from './runtime';
 
 const TAG		= bin.String(4);
 const u8 		= bin.UINT8;
@@ -45,11 +44,12 @@ export class WOFF extends Font {
 	static async load(file: bin.stream) {
 		const me 	= new WOFF;
 		const h		= bin.read(file, WOFFHeader);
-		console.log(h);
+
+		const inflate = bin.decompress('deflate-raw');
 
 		if (h.metaLength) {
 			const buffer = inflate(bin.read(file, bin.Offset(h.metaOffset, bin.Buffer(h.metaLength))));
-			me.metadata = xml.parse(decodeText(await buffer));
+			me.metadata = xml.parse(bin.utils.decodeText(await buffer));
 		}
 		if (h.privLength) {
 			const buffer = inflate(bin.read(file, bin.Offset(h.privOffset, bin.Buffer(h.privLength))));
@@ -319,11 +319,11 @@ export class WOFF2 extends Font {
 	static async load(file: bin.stream) {
 		const me 	= new WOFF2;
 		const h		= bin.read(file, WOFF2Header);
-		console.log(h);
+		const brotli = bin.decompress('brotli');
 
 		if (h.metaLength) {
 			const buffer = brotli(bin.read(file, bin.Offset(h.metaOffset, bin.Buffer(h.metaLength))));
-			me.metadata = xml.parse(decodeText(await buffer));
+			me.metadata = xml.parse(bin.utils.decodeText(await buffer));
 		}
 		if (h.privLength) {
 			const buffer = brotli(bin.read(file, bin.Offset(h.privOffset, bin.Buffer(h.privLength))));

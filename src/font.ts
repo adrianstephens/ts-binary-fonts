@@ -592,7 +592,7 @@ class cmapVariationSeq extends bin.Class({
 	variations:	bin.Array(u32, {
 		selector:	u24,
 		default_uvs:		bin.Offset(u32, {
-			ranges:		bin.Array(u32, bin.as(u32, bin.BitFields(32, {startUnicodeValue: 24, additionalCount: 8})))
+			ranges:		bin.Array(u32, bin.as(u32, bin.utils.BitFields(32, {startUnicodeValue: 24, additionalCount: 8})))
 		}, true),
 		non_default_uvs:	bin.Offset(u32, {
 			mappings:	bin.Array(u32, {unicodeValue: u24, glyphID: u16})
@@ -917,7 +917,7 @@ class GlyphReader extends bin.ReadClass({
 
 const sbix = {
 	version:	u16,	//1
-	flags:		bin.asEnum(u16, {DRAW_OUTLINES: 1 << 1}),
+	flags:		bin.as(u16, bin.EnumString( {DRAW_OUTLINES: 1 << 1})),
 	strikes:	bin.Array(u32, bin.Offset(u32, {
 		ppem:	u16,							//The PPEM size for which this strike was designed.
 		ppi:	u16,							//The device pixel density (in PPI) for which this strike was designed. (E.g., 96 PPI, 192 PPI.)
@@ -1506,12 +1506,13 @@ const GPOS = {
 			1:{//SINGLE1
 				coverage:		bin.Offset(u16, Coverage),
 				valueFormat:	u16,		
-				valueRecord:	as<ValueRecord>(bin.FuncType(s => ValueRecord(s.obj.valueFormat))),
+				//valueRecord:	as<ValueRecord>(bin.FuncType(s => ValueRecord(s.obj.valueFormat))),
+				valueRecord:	bin.FuncType(s => ValueRecord(s.obj.valueFormat)),
 			},
 			2:{//SINGLE2
 				coverage:		bin.Offset(u16, Coverage),
 				valueFormat:	u16,		
-				values:			bin.Array(u16, as<ValueRecord>(bin.FuncType(s => ValueRecord(s.obj.valueFormat)))),
+				values:			bin.Array(u16, bin.FuncType(s => ValueRecord(s.obj.valueFormat))),
 			},
 		},
 		2: {//	PAIR			Adjust position of a pair of glyphs
@@ -1521,8 +1522,8 @@ const GPOS = {
 				valueFormat2:	u16,			//Defines the types of data in valueRecord2 ' for the second glyph in the pair (may be zero).
 				pairSets:		bin.Array(u16, bin.Offset(u16, bin.Array(u16, {
 					secondGlyph:	u16,				//Glyph ID of second glyph in the pair (first glyph is listed in the Coverage table).
-					valueRecord1:	as<ValueRecord>(bin.FuncType(obj => ValueRecord(obj.obj.valueFormat1))),		//Positioning data for the first glyph in the pair.
-					valueRecord2:	as<ValueRecord>(bin.FuncType(obj => ValueRecord(obj.obj.valueFormat2))),		//Positioning data for the second glyph in the pair.
+					valueRecord1:	bin.FuncType(obj => ValueRecord(obj.obj.valueFormat1)),		//Positioning data for the first glyph in the pair.
+					valueRecord2:	bin.FuncType(obj => ValueRecord(obj.obj.valueFormat2)),		//Positioning data for the second glyph in the pair.
 				}))),
 			},
 			2: {//PAIR2
@@ -1534,8 +1535,8 @@ const GPOS = {
 				class1Count:	u16,	//Number of classes in classDef1 table ' includes Class 0.
 				class2Count:	u16,	//Number of classes in classDef2 table ' includes Class 0.
 				records:		bin.Array(s => s.obj.class1Count * s.obj.class2Count, {
-					valueRecord1:	as<ValueRecord>(bin.FuncType(obj => ValueRecord(obj.obj.valueFormat1))),	//Positioning for first glyph ' empty if valueFormat1 = 0.
-					valueRecord2:	as<ValueRecord>(bin.FuncType(obj => ValueRecord(obj.obj.valueFormat2))),	//Positioning for second glyph ' empty if valueFormat2 = 0.
+					valueRecord1:	bin.FuncType(obj => ValueRecord(obj.obj.valueFormat1)),	//Positioning for first glyph ' empty if valueFormat1 = 0.
+					valueRecord2:	bin.FuncType(obj => ValueRecord(obj.obj.valueFormat2)),	//Positioning for second glyph ' empty if valueFormat2 = 0.
 				}),//	Array of Class1 records, ordered by classes in classDef1.
 			},
 		},
