@@ -1146,7 +1146,7 @@ class Charset {
 		if (index <= 2) {
 			this.table = PREDEFINED_CHARSETS[index];
 		} else {
-			this.table = bin.read(new bin.stream(buffer.subarray(index)), Charset.Reader, this);
+			this.table = new bin.stream(buffer.subarray(index)).read(Charset.Reader, this);
 		}
 	}
 }
