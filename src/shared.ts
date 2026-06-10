@@ -103,7 +103,7 @@ export function load(data: Uint8Array): Font | FontGroup | Promise<Font> | undef
 	const tag		= TAG.get(file);
 	switch (tag) {
 		default:
-			if (binary.utils.stringCode(tag) != 0x00000100)
+			if (binary.text.stringCode(tag) != 0x00000100)
 				break;
 			//fall through
 		case 'true':

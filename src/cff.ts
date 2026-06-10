@@ -1180,9 +1180,9 @@ const FDSelect = {
 
 export class CFF extends bin.Class({
 	h:			header,
-	names:		bin.as(index, blocks => blocks.map(i => bin.utils.decodeText(i))),
+	names:		bin.as(index, blocks => blocks.map(i => bin.text.decode(i))),
 	indices:	index,
-	strings:	bin.as(index, blocks => blocks.map(i => bin.utils.decodeText(i))),
+	strings:	bin.as(index, blocks => blocks.map(i => bin.text.decode(i))),
 	gsubrs:		index,
 }) {
 //	static get(file: binary._stream) { return new this(file); }

@@ -39,9 +39,9 @@
 	"author": "Adrian Stephens",
 	"license": "MIT",
 	"dependencies": {
-		"@isopodlabs/binary": "^1.11.0",
+		"@isopodlabs/binary": "^2.0.1",
 		"@isopodlabs/maths": "^1.0.0",
 		"@isopodlabs/xml": "^1.2.0"
 	},
-	"version": "0.6.3"
+	"version": "0.7.0"
 }

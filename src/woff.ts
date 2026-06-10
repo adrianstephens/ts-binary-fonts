@@ -49,7 +49,7 @@ export class WOFF extends Font {
 
 		if (h.metaLength) {
 			const buffer = inflate(bin.read(file, bin.Offset(h.metaOffset, bin.Buffer(h.metaLength))));
-			me.metadata = xml.parse(bin.utils.decodeText(await buffer));
+			me.metadata = xml.parse(bin.text.decode(await buffer));
 		}
 		if (h.privLength) {
 			const buffer = inflate(bin.read(file, bin.Offset(h.privOffset, bin.Buffer(h.privLength))));
@@ -246,7 +246,7 @@ class WOFF2TransformedGlyf extends bin.Class({
 		const instructionStream		= file.view(Uint8Array, this.instructionStreamSize);	//Stream of UInt8 values representing a set of instructions for each corresponding glyph
 		const _overlapSimpleBitmap	= file.remainder();	//A numGlyphs-long bit array that provides values for the overlap flag [bit 6] for each simple glyph. (Flag values for composite glyphs are already encoded as part of the compositeStream[]).
 
-		const nc	= Array.from(bin.utils.as16s(nContourStream, true));
+		const nc	= Array.from(bin.typedArray.as(nContourStream, 'Int16', true));
 
 		const pfile = new bin.stream(nPointsStream);
 		const ffile	= new bin.stream(flagStream);
@@ -323,7 +323,7 @@ export class WOFF2 extends Font {
 
 		if (h.metaLength) {
 			const buffer = brotli(bin.read(file, bin.Offset(h.metaOffset, bin.Buffer(h.metaLength))));
-			me.metadata = xml.parse(bin.utils.decodeText(await buffer));
+			me.metadata = xml.parse(bin.text.decode(await buffer));
 		}
 		if (h.privLength) {
 			const buffer = brotli(bin.read(file, bin.Offset(h.privOffset, bin.Buffer(h.privLength))));

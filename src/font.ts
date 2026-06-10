@@ -295,8 +295,8 @@ const head = {
 //@internal
 export function loadLocs(loca: Uint8Array, glyf: Uint8Array, indexToLocFormat: number) {
 	const locs = indexToLocFormat === 0
-		? Array.from(bin.utils.as16(loca, true)).map(i => i * 2)
-		: Array.from(bin.utils.as32(loca, true));
+		? Array.from(bin.typedArray.as(loca, 'Uint16', true)).map(i => i * 2)
+		: Array.from(bin.typedArray.as(loca, 'Uint32', true));
 
 	return locs.slice(0, -1).map((loc: number, i: number) => glyf.subarray(loc, locs[i + 1]));
 }
@@ -481,7 +481,7 @@ class cmapHighByteTable extends bin.Class({...cmap_format_header1,
 				range:	u16,
 			});
 			const	coffset	= i * 256 + sub.start;
-			const	glyphs	= bin.utils.as16(this.data.slice(offset + sub.range, sub.count * 2), true);
+			const	glyphs	= bin.typedArray.as(this.data.slice(offset + sub.range, sub.count * 2), 'Uint16', true);
 			for (let c = 0; c < sub.count; c++)
 				map[c + coffset] = (glyphs[c] + sub.delta) & 0xffff;
 		}
@@ -592,7 +592,7 @@ class cmapVariationSeq extends bin.Class({
 	variations:	bin.Array(u32, {
 		selector:	u24,
 		default_uvs:		bin.Offset(u32, {
-			ranges:		bin.Array(u32, bin.as(u32, bin.utils.BitFields(32, {startUnicodeValue: 24, additionalCount: 8})))
+			ranges:		bin.Array(u32, bin.as(u32, bin.bitfields.BitFields(32, {startUnicodeValue: 24, additionalCount: 8})))
 		}, true),
 		non_default_uvs:	bin.Offset(u32, {
 			mappings:	bin.Array(u32, {unicodeValue: u24, glyphID: u16})
@@ -2026,7 +2026,7 @@ export class Font extends makeClass<{
 		if (svg) {
 			for (const i of svg.documents) {
 				if (id >= i.startGlyphID && id <= i.endGlyphID) {
-					const svg	= xml.parse(bin.utils.decodeText(i.doc.subarray(0, i.doc_length)));
+					const svg	= xml.parse(bin.text.decode(i.doc.subarray(0, i.doc_length)));
 					const g		= getElementById(svg.firstElement()!, `glyph${id}`);
 					if (g)
 						return ExtractSVG(svg, g);
