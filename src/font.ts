@@ -1958,7 +1958,7 @@ export class Font extends makeClass<{
 	}
 
 	numGlyphs() {
-		return this.glyphdata?.length ?? this.COLR?.v1?.baseGlyphs.length ?? this.cached.length ?? 0;
+		return this.maxp?.numGlyphs ?? this.glyphdata?.length ?? this.COLR?.v1?.baseGlyphs.length ?? this.cached.length ?? 0;
 	}
 
 	getGlyph(id: number): Glyph | undefined {

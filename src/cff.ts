@@ -1192,7 +1192,7 @@ export class CFF extends bin.Class({
 	charset?:	Charset;
 
 	constructor(s: bin._stream) {
-		const buffer	= s.remainder();
+		const buffer	= s.view_at(Uint8Array, s.tell());
 		super(s);
 
 		this.pub_dict = new Dictionary(this, buffer, this.indices[0], dict_top_defaults);
