@@ -246,8 +246,16 @@ export function parseCurve(curves: curveVertex[]): CurveSource {
 						break;
 		
 					case curveVertex.OFF_BEZ2:
-						if (prev_flags > 1)
-							on_curve(sink, mid(prev, pt));
+						if (prev_flags > 1) {
+							// two off-curve points in a row: TrueType implies an on-curve point at their midpoint,
+							// ending the curve so far there. The loop's own bottom-of-loop bookkeeping below sets
+							// prev2 = prev unconditionally, so without this reassignment the *next* Bezier2 would
+							// start from the earlier control point again instead of from this implied point,
+							// skipping over it and drawing a shape that never actually passes through it.
+							const implied = mid(prev, pt);
+							on_curve(sink, implied);
+							prev = implied;
+						}
 						break;
 		
 					case curveVertex.OFF_BEZ3:

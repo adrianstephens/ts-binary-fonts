@@ -6,7 +6,7 @@ import {color, curveVertex, curveExtent, parseCurve, FILL, EXTEND, Fill, Layer, 
 import {CFF} from "./cff";
 import {CPAL, COLR} from "./colr";
 
-interface glyphRef {
+export interface glyphRef {
 	glyph:			number;
 	mat:			float2x3;
 };
@@ -323,7 +323,7 @@ const MetricsHead = {
 	numOfLongMetrics:		u16,	//number of advance widths in metrics table
 };
 
-interface Metrics {
+export interface Metrics {
 	metrics: {
 		advance:	number,
 		bearing:	number,
@@ -405,8 +405,11 @@ export class name extends bin.ReadClass({
 		nameID:			asV(u16, ID),			//Name identifier
 		length:			u16,						//Name string length in bytes
 		offset:			u16,						//Name string offset in bytes from stringOffset.
-		name: bin.Offset(s => 
-			s.obj.obj.stringOffset + s.obj.offset, bin.Switch(s => s.obj.platformID, {
+		// three hops, not two: readn() (bin.Array's element loop) pushes the array itself as an intermediate .obj
+		// frame around each record, so from within a record .obj is the record, .obj.obj is the names array, and
+		// .obj.obj.obj is the outer name table that actually has stringOffset
+		name: bin.Offset(s =>
+			s.obj.obj.obj.stringOffset + s.obj.offset, bin.Switch(s => s.obj.platformID, {
 			[PLATFORM.MACINTOSH]: bin.String(
 				s => s.obj.length),
 			[PLATFORM.WINDOWS]: bin.Switch(s =>
@@ -893,20 +896,28 @@ class GlyphReader extends bin.ReadClass({
 				curve[i].y		= x += getDelta(!!(f & SIMPLE.SHORT_Y), !!(f & SIMPLE.SAME_Y));
 			});
 
+			// Each contour has to begin on a point that is on the curve, since that is where the outline starts and ends.
+			// TrueType lets a contour begin anywhere (a round glyph's often starts on a control point), so the points
+			// from the first on-curve one to the end are moved to the front. A contour with none at all is made of
+			// off-curve points only, and starts at the point the format implies halfway between its last and first.
+			const contours: curveVertex[] = [];
 			for (let i = 0, j = 0; i < this.num_contours; i++) {
 				const j1 = end_pts[i] + 1;
-				if (curve[j].flags != 1) {
-					for (let k = j; k < j1; k++) {
-						if (curve[k].flags == 1) {
-							arrayRotate(curve, j, k, j1 - j);
-							break;
-						}
-					}
-				}
-				curve[j].flags = curveVertex.ON_BEGIN;
+				const contour = curve.slice(j, j1);
 				j = j1;
+				if (contour.length < 3)		// a point or a line is no outline
+					continue;
+				let k = contour.findIndex(v => v.flags == curveVertex.ON_CURVE);
+				if (k < 0) {
+					const last = contour[contour.length - 1], first = contour[0];
+					contour.unshift(new curveVertex((last.x + first.x) / 2, (last.y + first.y) / 2, curveVertex.ON_CURVE));
+					k = 0;
+				}
+				arrayRotate(contour, 0, contour.length, contour.length - k);		// rotate right by what follows the on-curve point
+				contour[0].flags = curveVertex.ON_BEGIN;
+				contours.push(...contour);
 			}
-			this.curve	= curve;
+			this.curve	= contours;
 		}
 	}
 }
@@ -1944,16 +1955,22 @@ export class Font extends makeClass<{
 	glyphdata?: Uint8Array[];
 	cached:		(Glyph|undefined)[] = [];
 
+	family(): string | undefined { return this.name?.get(ID.PREF_FAMILY) ?? this.name?.get(ID.FAMILY); }
+	subfamily(): string { return this.name?.get(ID.PREF_SUBFAMILY) ?? this.name?.get(ID.SUBFAMILY) ?? 'Regular'; }
+
 	loadTable(tag: string, data: Uint8Array) {
 		const type = tableReaders[tag as keyof typeof tableReaders];
 		if (type) {
 			Object.defineProperty(this, tag, {
-				get() { return fix(this, tag, bin.read(new bin.stream(data), type)); },
+				// a class reader (bin.Class/bin.ReadClass) is constructed directly rather than through bin.read(),
+				// which would dispatch to its static get() -- fine for a Class, whose get() checks the stream type
+				// and returns synchronously for one of these, but ReadClass's get() is unconditionally async, so
+				// going through it would turn every table read into a Promise even though nothing here ever awaits
+				// real I/O (the whole table is already an in-memory buffer)
+				get() { return fix(this, tag, typeof type === 'function' ? new (type as new (s: bin.stream) => any)(new bin.stream(data)) : bin.read(new bin.stream(data), type)); },
 				enumerable: true,
 				configurable: true,
-				//set(v) { Object.defineProperty(this, '_' + tag, {value: v, writable: false, configurable: false}); }
 			});
-			//(this as any)[tag] = binary.read(new binary.stream(data), type);
 		}
 	}
 
@@ -1965,8 +1982,12 @@ export class Font extends makeClass<{
 		let glyph = this.cached[id];
 		if (!glyph) {
 			const cff = this['CFF '];
-			glyph = cff					? cff.getGlyph(id)
-				: this.glyphdata?.[id]	? new GlyphReader(new bin.stream(this.glyphdata[id]))
+			const data = this.glyphdata?.[id];
+			// a space (or any other glyph with no ink) has a zero-length entry in glyf, by design -- not something
+			// to read a GlyphReader header from, which needs at least a couple of bytes to be there at all
+			glyph = cff				? cff.getGlyph(id)
+				: data?.length		? new GlyphReader(new bin.stream(data))
+				: data				? {min: float2(0, 0), max: float2(0, 0)}
 				: undefined;
 			if (glyph)
 				this.cached[id] = glyph;

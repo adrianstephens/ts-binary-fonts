@@ -3,9 +3,9 @@
 import * as fs from 'fs/promises';
 import * as zlib from 'zlib';
 import * as bin from '@isopodlabs/binary';
-import {load, Font, FontGroup} from './shared';
+import {load, Font, FontGroup} from './common';
 
-export * from './shared';
+export * from './common';
 
 bin.configureDecompression('deflate-raw', buffer => new Promise((resolve, reject) => {
 	zlib.inflateRaw(buffer, (err, result) => err ? reject(err) : resolve(result));

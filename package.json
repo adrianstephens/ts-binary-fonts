@@ -20,7 +20,6 @@
 		"README.md"
 	],
 	"scripts": {
-		"prepare": "ts-patch install && copy-file node_modules/@isopodlabs/binary/scripts/transform.ts scripts/transform.ts",
 		"build": "tsc -p ./",
 		"build:browser": "esbuild src/browser.ts --bundle --minify --platform=browser --format=esm --target=es2022 --sourcemap --outfile=dist/browser.mjs",
 		"serve:test": "node test/serve.js",
