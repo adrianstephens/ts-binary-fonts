@@ -1,5 +1,5 @@
 import { float2, reflect, float2x2, float2x3, max_circle_point, mid }  from '@isopodlabs/maths/vector';
-import { circle } from '@isopodlabs/maths/geometry';
+import { circle, bezier3, cubic_to_quadratic } from '@isopodlabs/maths/geometry';
 
 export interface color {
 	r: number,
@@ -301,6 +301,30 @@ export function curveExtent(source: CurveSource) {
 	};
 	source.run(sink);
 	return ext;
+}
+
+// replace cubic segments by quadratics within tol of them; a curve with none is returned as is
+export function quadraticCurve(curve: curveVertex[], tol: number) {
+	if (curve.every(v => v.flags <= curveVertex.OFF_BEZ2))
+		return curve;
+
+	const	out: curveVertex[] = [];
+	let		begin: float2;
+	// parseCurve closes a contour with a segment ending at the begin point itself, which the format leaves implicit
+	const	on	= (p: float2) => p !== begin && out.push(makeCurveVertex(p, curveVertex.ON_CURVE));
+	const	off	= (p: float2) => out.push(makeCurveVertex(p, curveVertex.OFF_BEZ2));
+	const	arc	= () => { throw new Error('arcs cannot be lowered to quadratics'); };
+
+	parseCurve(curve).run({
+		Begin(a: float2)									{ out.push(makeCurveVertex(begin = a, curveVertex.ON_BEGIN)); },
+		End()												{ },
+		Line(_a: float2, b: float2)							{ on(b); },
+		Bezier2(_a: float2, b: float2, c: float2)			{ off(b); on(c); },
+		Bezier3(a: float2, b: float2, c: float2, d: float2)	{ cubic_to_quadratic(new bezier3(a, b, c, d), tol).forEach(off); on(d); },
+		Arc:	arc,
+		Arc3:	arc,
+	});
+	return out;
 }
 
 //-----------------------------------------------------------------------------

@@ -173,6 +173,11 @@ The FontGroup holds an array of Fonts read from, say, a TTC file
 
     The array of fonts.
 
+### Curves
+- `quadraticCurve(curve: curveVertex[], tol: number): curveVertex[]`
+
+    Lowers a curve's cubic segments (as found in CFF glyphs) to quadratics within `tol` font units, TrueType style: consecutive `OFF_BEZ2` controls imply the on-curve point midway between them, so only the cubics' own endpoints are kept on-curve. A curve without cubics is returned unchanged. For a glyph: `{...glyph, curve: glyph.curve && quadraticCurve(glyph.curve, 1)}`.
+
 ### Functions
 - `load(data: Uint8Array): Font | FontGroup | Promise<Font> | undefined`
 
