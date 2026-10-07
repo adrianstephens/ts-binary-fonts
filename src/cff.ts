@@ -1,6 +1,6 @@
 
 import * as bin from '@isopodlabs/binary';
-import {curveVertex} from './curves';
+import {curveVertex, ON_BEGIN, ON_CURVE, OFF_BEZ3} from './curves';
 import {float2} from '@isopodlabs/maths/vector';
 
 function as<T>(type: bin.Type) {
@@ -39,12 +39,12 @@ class PS_VM {
 	hstems:		float2[] = [];
 	vstems?:	float2[];
 
-	MoveTo(p: float2) {	this.verts.push(new curveVertex(p.x, p.y, curveVertex.ON_BEGIN)); }
-	LineTo(p: float2) {	this.verts.push(new curveVertex(p.x, p.y, curveVertex.ON_CURVE)); }
+	MoveTo(p: float2) {	this.verts.push(curveVertex(p.x, p.y, ON_BEGIN)); }
+	LineTo(p: float2) {	this.verts.push(curveVertex(p.x, p.y, ON_CURVE)); }
 	BezierTo(p1: float2, p2: float2, p3: float2) {
-		this.verts.push(new curveVertex(p1.x, p1.y, curveVertex.OFF_BEZ3));
-		this.verts.push(new curveVertex(p2.x, p2.y, curveVertex.OFF_BEZ3));
-		this.verts.push(new curveVertex(p3.x, p3.y, curveVertex.ON_CURVE));
+		this.verts.push(curveVertex(p1.x, p1.y, OFF_BEZ3));
+		this.verts.push(curveVertex(p2.x, p2.y, OFF_BEZ3));
+		this.verts.push(curveVertex(p3.x, p3.y, ON_CURVE));
 	}
 };
 
@@ -378,8 +378,9 @@ class CFF_VM extends PS_VM {
 	constructor(gs: Uint8Array[], ls: Uint8Array[], public nom_width: number, default_width: number) {
 		super();
 		this.width	= default_width;
-		this.gsubrs	= new subrs(gs);
-		this.lsubrs	= new subrs(ls);
+		// a font with no subroutines at all has no Subrs entry to read
+		this.gsubrs	= new subrs(gs ?? []);
+		this.lsubrs	= new subrs(ls ?? []);
 	}
 	
 	stemBytes() {
@@ -645,13 +646,12 @@ class CFF_VM extends PS_VM {
 
 					case op.hhcurveto: {//|- dy1? {dxa dxb dyb dxc}+
 						const	s	= this.st;
-						for (let j = 0; j < s.length; j += 4) {
-							const	p1 = this.pt;
-							if (j == 0 && (s.length & 1))
-								p1.y += s[j++];
-							p1.x += s[j];
+						let		j	= 0;
+						const	dy	= s.length & 1 ? s[j++] : 0;
+						for (let first = true; j + 3 < s.length; j += 4, first = false) {
+							const p1	= float2(this.pt.x + s[j], this.pt.y + (first ? dy : 0));
 							const p2	= p1.add(pt(s, j + 1));
-							this.pt		= float2(p2.x += s[3], p2.y);
+							this.pt		= float2(p2.x + s[j + 3], p2.y);
 							this.BezierTo(p1, p2, this.pt);
 						}
 						this.st = [];
@@ -660,63 +660,29 @@ class CFF_VM extends PS_VM {
 
 					case op.vvcurveto: {//|- dx1? {dya dxb dyb dyc}+
 						const	s	= this.st;
-						for (let j = 0; j < s.length; j += 4) {
-							const p1	= this.pt;
-							if (j == 0 && (s.length & 1))
-								p1.x += s[j++];
-							p1.y		+= s[j];
+						let		j	= 0;
+						const	dx	= s.length & 1 ? s[j++] : 0;
+						for (let first = true; j + 3 < s.length; j += 4, first = false) {
+							const p1	= float2(this.pt.x + (first ? dx : 0), this.pt.y + s[j]);
 							const p2	= p1.add(pt(s, j + 1));
-							this.pt		= float2(p2.x, p2.y + s[3]);
+							this.pt		= float2(p2.x, p2.y + s[j + 3]);
 							this.BezierTo(p1, p2, this.pt);
 						}
 						this.st = [];
 						break;
 					}
 
-					case op.hvcurveto: {//|- dx1 dx2 dy2 dy3 {dya dxb dyb dxc dxd dxe dye dyf}* dxf?
-						const	s	= this.st;
-						for (let j = 0; j < s.length; j += 4) {
-							let	p1 = float2(this.pt.x + s[j], this.pt.y);
-							let	p2 = p1.add(pt(s, j + 1));
-							this.pt = float2(p2.x, p2.y + s[3]);
-							j	+= 4;
-							if (j == s.length - 1)
-								this.pt.x += s[j++];
-							this.BezierTo(p1, p2, this.pt);
-							if (j < s.length) {
-								p1		= this.pt;
-								p1.y	+= s[j];
-								p2		= p1.add(pt(s, j + 1));
-								this.pt = float2(p2.x += s[3], p2.y);
-								j	+= 4;
-								if (j == s.length - 1)
-									this.pt.y += s[j++];
-								this.BezierTo(p1, p2, this.pt);
-							}
-						}
-						this.st = [];
-						break;
-					}
-
+					// curves alternating between starting horizontal and vertical; the last may have one extra argument
+					case op.hvcurveto:	//|- dx1 dx2 dy2 dy3 {dya dxb dyb dxc dxd dxe dye dyf}* dxf?
 					case op.vhcurveto: {//|- dy1 dx2 dy2 dx3 {dxa dxb dyb dyc dyd dxe dye dxf}* dyf?
 						const	s	= this.st;
-						for (let j = 0; j < s.length; j += 4) {
-							let	p1	= float2(this.pt.x, this.pt.y + s[j]);
-							let	p2	= p1.add(pt(s, j + 1));
-							this.pt	= float2(p2.x + s[3], p2.y);
-							j	+= 4;
-							if (j == s.length - 1)
-								this.pt.y += s[j++];
+						let		horizontal = b0 == op.hvcurveto;
+						for (let j = 0; j + 3 < s.length; j += 4, horizontal = !horizontal) {
+							const extra	= s.length - j == 5 ? s[j + 4] : 0;
+							const p1	= horizontal ? float2(this.pt.x + s[j], this.pt.y) : float2(this.pt.x, this.pt.y + s[j]);
+							const p2	= p1.add(pt(s, j + 1));
+							this.pt		= horizontal ? float2(p2.x + extra, p2.y + s[j + 3]) : float2(p2.x + s[j + 3], p2.y + extra);
 							this.BezierTo(p1, p2, this.pt);
-							if (j < s.length) {
-								p1		= float2(this.pt.x + s[j], this.pt.y);
-								p2		= p1.add(pt(s, j + 1));
-								this.pt	= float2(p2.x, p2.y + s[3]);
-								j	+= 4;
-								if (j == s.length - 1)
-									this.pt.x += s[j++];
-								this.BezierTo(p1, p2, this.pt);
-							}
 						}
 						this.st = [];
 						break;
@@ -735,7 +701,7 @@ class CFF_VM extends PS_VM {
 				}
 
 			} else if (b0 == op.fixed16_16) {
-				const hi = ins[i + 0] * 256 + ins[i + 1];
+				const hi = (ins[i + 0] << 24 >> 16) + ins[i + 1];		// signed
 				const lo = ins[i + 2] * 256 + ins[i + 3];
 				push(hi + lo / 65536);
 				i += 4;

@@ -1,8 +1,8 @@
 import * as xml from '@isopodlabs/xml';
 import * as bin from '@isopodlabs/binary';
-import {Font, vec2, Glyph, loadLocs, loadMetrics, readComposite, tableTypes} from './font';
-import {curveVertex, curveExtent, parseCurve, makeCurveVertex} from './curves';
+import {Font, vec2, Glyph, GlyphSerialiser, loadLocs, loadMetrics, readComposite, contoursToCurve} from './font';
 import {float2} from '@isopodlabs/maths/vector';
+import {layout} from './write';
 
 const TAG		= bin.String(4);
 const u8 		= bin.UINT8;
@@ -14,7 +14,8 @@ const u32 		= bin.UINT32_BE;
 //	WOFF
 //-----------------------------------------------------------------------------
 
-const WOFFHeader = {
+//@internal
+export const WOFFHeader = {
 	signature:		u32,	//0x774F4646 'wOFF'
 	flavor:			u32,	//The "sfnt version" of the input font.
 	length:			u32,	//Total size of the WOFF file.
@@ -45,7 +46,7 @@ export class WOFF extends Font {
 		const me 	= new WOFF;
 		const h		= bin.read(file, WOFFHeader);
 
-		const inflate = bin.decompress('deflate-raw');
+		const inflate = bin.decompress('deflate');		// zlib, as the format says
 
 		if (h.metaLength) {
 			const buffer = inflate(bin.read(file, bin.Offset(h.metaOffset, bin.Buffer(h.metaLength))));
@@ -68,10 +69,11 @@ export class WOFF extends Font {
 					: bin.read(file, bin.Offset(table.offset, bin.Buffer(table.origLength)));
 			}
 		}
-		for (const i of tableTypes) {
-			const buffer = await getTable(i);
+		me.sfntVersion = h.flavor;
+		for (const {tag} of h.tables) {
+			const buffer = await getTable(tag);
 			if (buffer)
-				me.loadTable(i, buffer);
+				me.loadTable(tag, buffer);
 		}
 
 		//glyph data
@@ -87,6 +89,55 @@ export class WOFF extends Font {
 
 		return me;
 	}
+
+	// the font, whatever it was read from, as a file of this format: the tables an SFNT file would have, compressed
+	static async write(font: Font) {
+		const deflate = bin.compress('deflate');
+		const {tables, header: directory, size: sfntSize} = layout(font);
+		const tags = directory.tables.map(e => e.tag);
+	
+		const packed: Uint8Array[] = [];
+		for (const tag of tags) {
+			const data = tables.get(tag)!;
+			const z = await deflate(data);
+			packed.push(z.length < data.length ? z : data);
+		}
+
+		let offset = 44 + 20 * tags.length;
+		const header = {
+			signature:		0x774F4646,				// 'wOFF'
+			flavor:			font.sfntVersion,
+			length:			0,
+			numTables:		tags.length,
+			reserved:		0,
+			totalSfntSize:	sfntSize,
+			version:		font.head?.font_revision,
+			metaOffset:		0,
+			metaLength:		0,
+			metaOrigLength:	0,
+			privOffset:		0,
+			privLength:		0,
+			tables:			tags.map((tag, i) => {
+				const entry = {tag, offset, compLength: packed[i].length, origLength: tables.get(tag)!.length, origChecksum: directory.tables[i].checksum};
+				offset += (packed[i].length + 3) & ~3;
+				return entry;
+			}),
+		};
+		header.length = offset;
+		const s = new bin.growingStream();
+		bin.write(s, WOFFHeader, header);
+
+		packed.forEach((b, i) => {
+			s.seek(header.tables[i].offset);
+			s.write_view(b);
+		});
+		s.write_view(new Uint8Array(header.length - s.tell()));		// the last table is padded too
+		return s.terminate();
+	}
+
+	save() {
+		return WOFF.write(this);
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -95,18 +146,26 @@ export class WOFF extends Font {
 
 const UShort255 = {
 	get(s: bin._stream) {
-		const oneMoreByteCode1    = 255;
-		const oneMoreByteCode2    = 254;
-		const wordCode            = 253;
-		const lowestUCode         = 253;
-
 		const code = u8.get(s);
-		return	code == wordCode	? u16.get(s)
-			:	code == oneMoreByteCode1	? u8.get(s) + lowestUCode
-			:	code == oneMoreByteCode2	? u8.get(s) + lowestUCode * 2
+		return	code == 253	? u16.get(s)
+			:	code == 255	? u8.get(s) + 253
+			:	code == 254	? u8.get(s) + 253 * 2
 			:	code;
 	},
-	put(_s: bin._stream, _v: number) {
+	// a number up to 252 in a byte; then 253 and a word for any; or 255, or 254, and a byte, for those 253 to 505 or 506 to 758
+	put(s: bin._stream, v: number) {
+		if (v < 253) {
+			u8.put(s, v);
+		} else if (v < 506) {
+			u8.put(s, 255);
+			u8.put(s, v - 253);
+		} else if (v < 759) {
+			u8.put(s, 254);
+			u8.put(s, v - 506);
+		} else {
+			u8.put(s, 253);
+			u16.put(s, v);
+		}
 	}
 };
 
@@ -121,7 +180,12 @@ const UIntBase128 = {
 		}
 		throw new Error("bad uint");
 	},
-	put(_s: bin._stream, _v: number) {
+	// seven bits at a time, the most significant first, each but the last with its top bit set
+	put(s: bin._stream, v: number) {
+		const bytes = [v % 128];
+		for (v = Math.floor(v / 128); v > 0; v = Math.floor(v / 128))
+			bytes.unshift((v % 128) | 0x80);
+		bin.writen(s, u8, bytes);
 	}
 };
 
@@ -172,7 +236,9 @@ function decodeTriplet(flags: number, file: bin._stream): float2 {
 	return float2(e.xbits < 0 ? -x : x, e.ybits < 0 ? -y : y);
 }
 
-const KnownTags = [
+
+//@internal
+export const KnownTags = [
 	'cmap',	'head',	'hhea',	'hmtx',	'maxp',	'name',	'OS/2',	'post',
 	'cvt ',	'fpgm',	'glyf',	'loca',	'prep',	'CFF ',	'VORG',	'EBDT',
 	'EBLC',	'gasp',	'hdmx',	'kern',	'LTSH',	'PCLT',	'VDMX',	'vhea',
@@ -183,7 +249,8 @@ const KnownTags = [
 	'trak',	'Zapf',	'Silf',	'Glat',	'Gloc',	'Feat',	'Sill',	'xxxx',
 ];
 
-const WOFF2Header = {
+//@internal
+export const WOFF2Header = {
 	signature:		u32,	//0x774F4632 'wOF2'
 	flavor:			TAG,	//The "sfnt version" of the input font.
 	length:			u32,	//Total size of the WOFF file.
@@ -247,6 +314,7 @@ class WOFF2TransformedGlyf extends bin.Class({
 		const _overlapSimpleBitmap	= file.remainder();	//A numGlyphs-long bit array that provides values for the overlap flag [bit 6] for each simple glyph. (Flag values for composite glyphs are already encoded as part of the compositeStream[]).
 
 		const nc	= Array.from(bin.typedArray.as(nContourStream, 'Int16', true));
+		const nGlyphs = this.numGlyphs;
 
 		const pfile = new bin.stream(nPointsStream);
 		const ffile	= new bin.stream(flagStream);
@@ -255,58 +323,64 @@ class WOFF2TransformedGlyf extends bin.Class({
 		const ifile	= new bin.stream(instructionStream);
 		const bfile	= new bin.stream(bboxStream);
 
-		//const bboxBitmap = bfile.read_buffer((this.numGlyphs + 7) >> 3);
-		const bboxBitmap = bin.read(bfile, bin.Buffer((this.numGlyphs + 7) >> 3));
+		// which glyphs have a bounding box stored (the others' is worked out from their points): a bit each, the first
+		// glyph in the top bit, in a bitmap padded to a multiple of four bytes, and then the boxes themselves
+		const bboxBitmap = bin.read(bfile, bin.Buffer(4 * ((nGlyphs + 31) >> 5)));
+		const bit = (map: Uint8Array, i: number) => !!(map[i >> 3] & (0x80 >> (i & 7)));
+		const overlaps = (this.optionFlags & 1) ? _overlapSimpleBitmap : undefined;
 
 		this.glyphs = nc.map((nc, index) => {
-			let bbox = bboxBitmap[index >> 3] & (1 << (index & 7)) ? bin.read(bfile, {min: vec2(s16), max: vec2(s16)}) : undefined;
+			let bbox = bit(bboxBitmap, index) ? bin.read(bfile, {min: vec2(s16), max: vec2(s16)}) : undefined;
 			let instructions;
 
 			if (nc < 0) {
 				if (!bbox)
-					throw new Error("missing bbox");
+					throw new Error("a composite glyph has no bounding box");
 
-				const {refs, have_instructions} = readComposite(cfile);
+				const {refs, have_instructions, overlap} = readComposite(cfile);
 				if (have_instructions) {
 					const ins = UShort255.get(gfile);
-					//instructions = ifile.read_buffer(ins);
 					instructions = bin.read(ifile, bin.Buffer(ins));
 				}
-	
 				return {
 					min: bbox.min,
 					max: bbox.max,
 					refs,
-					instructions
-				};
-
-			} else {
-				const curve: curveVertex[] = [];
-				if (nc) {
-					let	pt = float2(0,0);
-					while (nc--) {
-						const np = UShort255.get(pfile);
-						for (let i = 0; i < np; ++i) {
-							const flags = u8.get(ffile);
-							pt = pt.add(decodeTriplet(flags, gfile));
-							curve.push(makeCurveVertex(pt, i === 0 ? curveVertex.ON_BEGIN : flags & 0x80 ? curveVertex.OFF_BEZ2 : curveVertex.ON_CURVE));
-						}
-					}
-					const ins = UShort255.get(gfile);
-					//instructions = ifile.read_buffer(ins);
-					instructions = bin.read(ifile, bin.Buffer(ins));
-				}
-
-				if (!bbox)
-					bbox = curveExtent(parseCurve(curve));
-
-				return {
-					min: bbox.min,
-					max: bbox.max,
-					curve,
-					instructions
-				};
+					instructions,
+					overlap: overlap || undefined,
+				} as Glyph;
 			}
+
+			const contours: {x: number, y: number, on: boolean}[][] = [];
+			if (nc) {
+				let	x = 0, y = 0;
+				for (let c = 0; c < nc; c++) {
+					const points: {x: number, y: number, on: boolean}[] = [];
+					for (let i = UShort255.get(pfile); i > 0; i--) {
+						const flags = u8.get(ffile);
+						const d = decodeTriplet(flags, gfile);
+						points.push({x: x += d.x, y: y += d.y, on: !(flags & 0x80)});		// the top bit of the flag is set for an off-curve point
+					}
+					contours.push(points);
+				}
+				const ins = UShort255.get(gfile);
+				instructions = bin.read(ifile, bin.Buffer(ins));
+			}
+
+			// without a stored box it is the extent of the points, those off the curve too, as a stored one is
+			if (!bbox) {
+				const all = contours.flat();
+				bbox = all.length
+					? {min: float2(Math.min(...all.map(p => p.x)), Math.min(...all.map(p => p.y))), max: float2(Math.max(...all.map(p => p.x)), Math.max(...all.map(p => p.y)))}
+					: {min: float2(0, 0), max: float2(0, 0)};
+			}
+			return {
+				min: bbox.min,
+				max: bbox.max,
+				curve: contours.length ? contoursToCurve(contours) : undefined,
+				instructions,
+				overlap: overlaps && bit(overlaps, index) ? true : undefined,
+			} as Glyph;
 		});
 
 	}
@@ -344,10 +418,13 @@ export class WOFF2 extends Font {
 			return h.tables.find(i => i.tag === tag);
 		}
 
-		for (const i of tableTypes) {
-			const table = findTable(i);
-			if (table && !(table.flags & 0xc0))
-				me.loadTable(i, table.data!);
+		me.sfntVersion = [...h.flavor].reduce((v, c) => ((v << 8) | c.charCodeAt(0)) >>> 0, 0);
+		// a transformed table is not the table's own bytes, so it is not kept as one. The version of the transform is in
+		// the top bits of the flags: 0 is the transform for glyf and loca (3 is none), but none for the other tables.
+		for (const table of h.tables) {
+			const version = table.flags >> 6;
+			if (version === (table.tag === 'glyf' || table.tag === 'loca' ? 3 : 0))
+				me.loadTable(table.tag, table.data!);
 		}
 
 		//glyph data
@@ -357,6 +434,9 @@ export class WOFF2 extends Font {
 			if ((glyf.flags & 0xc0) == 0) {
 				const g = new WOFF2TransformedGlyf(new bin.stream(glyf.data!));
 				me.cached	= g.glyphs;
+				// there is no glyf to keep, so one is made from the glyphs (without their hinting) for the font to be
+				// edited and written as any other is
+				me.glyphdata = g.glyphs.map(gl => new GlyphSerialiser({curve: gl.curve, refs: gl.refs, min: gl.min, max: gl.max, overlap: gl.overlap}).toBytes());
 			} else {
 				me.glyphdata = loadLocs(loca.data!, glyf.data!, me.head!.indexToLocFormat);
 			}
@@ -384,5 +464,61 @@ export class WOFF2 extends Font {
 			}
 		}
 		return me;
+	}
+
+	// the font, whatever it was read from, as a file of this format: the tables an SFNT file would have, compressed
+	static async write(font: Font) {
+		const brotli = bin.compress('brotli');
+		const {tables, size: sfntSize} = layout(font);
+		// loca must follow glyf
+		const tags = [...tables.keys()].filter(t => t !== 'loca');
+		if (tables.has('loca'))
+			tags.splice(tags.indexOf('glyf') + 1, 0, 'loca');
+	
+		const all = new Uint8Array(tags.reduce((n, t) => n + tables.get(t)!.length, 0));
+		let at = 0;
+		for (const tag of tags) {
+			all.set(tables.get(tag)!, at);
+			at += tables.get(tag)!.length;
+		}
+		const packed = await brotli(all);
+		const flavorTag = (version: number) => String.fromCharCode(version >>> 24, (version >>> 16) & 255, (version >>> 8) & 255, version & 255);
+	
+		const header = {
+			signature:				0x774F4632,		// 'wOF2'
+			flavor:					flavorTag(font.sfntVersion),
+			length:					0,
+			numTables:				tags.length,
+			reserved:				0,
+			totalSfntSize:			sfntSize,
+			totalCompressedSize:	packed.length,
+			version:				font.head?.font_revision ?? 0,
+			metaOffset:				0,
+			metaLength:				0,
+			metaOrigLength:			0,
+			privOffset:				0,
+			privLength:				0,
+			tables:					tags.map(tag => {
+				const known = KnownTags.indexOf(tag);
+				// a known table is named by its number, and any other by 63 and its tag. The transform version is in the top
+				// bits: 3 is none for glyf and loca (0 would be the glyf transform), 0 is none for the others.
+				const version = tag === 'glyf' || tag === 'loca' ? 3 : 0;
+				return {flags: (version << 6) | (known >= 0 ? known : 63), tag, origLength: tables.get(tag)!.length, transformLength: 0, data: new Uint8Array(0)};
+			}),
+			sub:					undefined,
+		};
+
+		// the header says how long the file is, and is as long whatever it says
+		header.length = (bin.measure(WOFF2Header, header) + packed.length + 3) & ~3;
+
+		const s = new bin.growingStream();
+		bin.write(s, WOFF2Header, header);
+		s.write_view(packed);
+		s.write_view(new Uint8Array(header.length - s.tell()));		// the file's end is padded
+		return s.terminate();
+	}
+
+	save() {
+		return WOFF2.write(this);
 	}
 }

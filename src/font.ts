@@ -1,22 +1,29 @@
 import * as bin from '@isopodlabs/binary';
 import * as xml from '@isopodlabs/xml';
 import {float2, float2x3} from '@isopodlabs/maths/vector';
-import {color, curveVertex, curveExtent, parseCurve, FILL, EXTEND, Fill, Layer, parseSVGpath, makeSVGPath} from './curves';
+import {color, curveVertex, ON_BEGIN, ON_CURVE, OFF_BEZ2, bezier2Curve, curveExtent, parseCurve, transformCurve, FILL, EXTEND, Fill, Layer, parseSVGpath, makeSVGPath} from './curves';
 
 import {CFF} from "./cff";
 import {CPAL, COLR} from "./colr";
 
-export interface glyphRef {
+// A component of a composite glyph. Only what the matrix cannot say is kept as flags; how its arguments are sized and
+// which of the scale forms is used are worked out again when it is written.
+export interface GlyphRef {
 	glyph:			number;
 	mat:			float2x3;
+	match?:			[number, number];	// placed by making a point of the composite so far coincide with a point of this glyph, not by an offset (mat.z is then unused)
+	useMyMetrics?:	boolean;			// the composite takes this component's advance and side bearing
+	roundToGrid?:	boolean;			// the offset is rounded to the pixel grid when hinted
+	scaledOffset?:	boolean;			// the offset is scaled by the component's matrix (Apple's way), not applied as it is (Microsoft's)
 };
 
 export interface Glyph {
 	min:			float2;
 	max:			float2;
 	curve?:			curveVertex[];
-	refs?:			glyphRef[];
+	refs?:			GlyphRef[];
 	instructions?:	Uint8Array;
+	overlap?:		boolean;		// its contours (or components) may overlap, so a renderer should not assume they do not
 };
 
 export interface GlyphImage {
@@ -85,7 +92,7 @@ function asV<T extends {[key: string]: any}>(type: bin.TypeT<any>, values: T) {
 
 const timeAdjust = new Date('1970-01-01T00:00:00Z').getTime() - new Date('1904-01-01T00:00:00Z').getTime();
 
-const datetime64 = bin.as(bin.INT64_BE, i => new Date(Number(i) * 1000 - timeAdjust));
+const datetime64 = bin.as(bin.INT64_BE, i => new Date(Number(i) * 1000 - timeAdjust), (d: Date) => BigInt(Math.round((d.getTime() + timeAdjust) / 1000)));
 const TAG		= bin.String(4);
 const u8 		= bin.UINT8;
 const s8 		= bin.INT8;
@@ -94,8 +101,13 @@ const s16 		= bin.INT16_BE;
 const u32 		= bin.UINT32_BE;
 const u24		= bin.UINT(24, true);
 
-const fixed16	= bin.asFixed(u16, 14);
-const fixed8	= bin.asFixed(u8, 6);
+// a signed 2.14 fixed-point number, a component's scale: the number of sixteen-thousandths it is, to write
+const f2dot14	= bin.as(s16, (x: number) => x / 16384, (v: number) => {
+	const n = Math.round(v * 16384);
+	if (n < -32768 || n > 32767)
+		throw new RangeError(`scale ${v} does not fit a component of a TrueType glyph`);
+	return n;
+});
 
 //@internal
 export function vec2(type: bin.TypeT<number>): bin.TypeT<float2> {
@@ -234,6 +246,33 @@ const OS2 = {
 };
 
 //-----------------------------------------------------------------------------
+// The start of an SFNT file (TrueType or OpenType): its version, and a record of where each table is
+//-----------------------------------------------------------------------------
+
+//@internal
+export class SFNTHeader extends bin.Class({
+	version:		u32,	// 0x00010000 for version 1.0 (or 'true' or 'typ1'); 'OTTO' for opentype
+	num_tables:		u16,	// Number of tables.
+	search_range:	u16,	// (Maximum power of 2 <= numTables) x 16.
+	entry_selector:	u16,	// Log2(maximum power of 2 <= numTables).
+	range_shift:	u16,	// NumTables x 16-searchRange.
+	tables:	bin.Array(s => s.obj.num_tables, {
+		tag:			TAG,	// 4 -byte identifier.
+		checksum:		u32,	// CheckSum for this table.
+		offset:			u32,	// Offset from beginning of TrueType font file.
+		length:			u32,	// Length of this table.
+	})
+}) {
+	getTable(tag: string, file: bin.stream):		Uint8Array | undefined;
+	getTable(tag: string, file: bin.async._stream):	bin.MaybePromise<Uint8Array>| undefined;
+	getTable(tag: string, file: bin.stream|bin.async._stream) {
+		const table = this.tables.find(i => i.tag === tag);
+		if (table)
+			return file.view_at(Uint8Array, table.offset, table.length);
+	}
+};
+
+//-----------------------------------------------------------------------------
 //	head	(TTF + OTF)
 //-----------------------------------------------------------------------------
 
@@ -273,7 +312,8 @@ const headDIRECTION = {
 } as const;
 //export type headDIRECTION = typeof headDIRECTION[keyof typeof headDIRECTION];
 
-const head = {
+//@internal
+export class head extends bin.Class({
 	version:			u32,		//0x00010000 if (version 1.0)
 	font_revision:		u32,		//set by font manufacturer
 	checksum_adj:		u32,		//To compute: set it to 0, calculate the checksum for the 'head' table and put it in the table directory, sum the entire font as u32, then store B1B0AFBA - sum. The checksum for the 'head' table will not be wrong. That is OK.
@@ -290,7 +330,7 @@ const head = {
 	fontDirectionHint:	asV(s16, headDIRECTION),		//0 Mixed directional glyphs
 	indexToLocFormat:	s16,		//0 for short offsets, 1 for long
 	glyphDataFormat:	s16,		//0 for current format
-};
+}) {}
 
 //@internal
 export function loadLocs(loca: Uint8Array, glyf: Uint8Array, indexToLocFormat: number) {
@@ -306,7 +346,8 @@ export function loadLocs(loca: Uint8Array, glyf: Uint8Array, indexToLocFormat: n
 //	vhea	Vertical Header Table	+ vmtx
 //-----------------------------------------------------------------------------
 
-const MetricsHead = {
+//@internal
+export class MetricsHead extends bin.Class({
 	version:				u32,	//0x00010000 (1.0)
 	ascent:					s16,	//Distance from baseline of highest ascender
 	descent:				s16,	//Distance from baseline of lowest descender
@@ -321,7 +362,7 @@ const MetricsHead = {
 	reserved:				bin.Array(4, s16),			//set value to 0
 	metricDataFormat:		s16,	//0 for current format
 	numOfLongMetrics:		u16,	//number of advance widths in metrics table
-};
+}) {}
 
 export interface Metrics {
 	metrics: {
@@ -339,12 +380,20 @@ export function loadMetrics(data: Uint8Array, numGlyphs: number, numMetrics: num
 		bearing:	bin.readn(hfile, s16, numGlyphs - numMetrics)
 	};
 }
+//@internal
+export function saveMetrics(m: Metrics) {
+	const s = new bin.growingStream();
+	bin.writen(s, {advance: u16, bearing: s16}, m.metrics);
+	bin.writen(s, s16, m.bearing);
+	return s.terminate();
+}
 
 //-----------------------------------------------------------------------------
 //	maxp	Maximum Profile (TTF)
 //-----------------------------------------------------------------------------
 
-const maxp = {
+//@internal
+export class maxp extends bin.Class({
 	version:				u32,	//0x00010000 (1.0)
 	numGlyphs:				u16,	//the number of glyphs in the font
 	_: bin.If(s => s.obj.version >= 0x00010000, {
@@ -362,7 +411,7 @@ const maxp = {
 		maxComponentElements:	u16,	//number of glyphs referenced at top level
 		maxComponentDepth:		u16,	//levels of recursion, set to 0 if font has only simple glyphs
 	}),
-};
+}) {};
 
 //-----------------------------------------------------------------------------
 //	name	Naming Table	(TTF + OTF)
@@ -799,6 +848,8 @@ const COMPOUND = {
 	HAVE_INSTRUCTIONS:	1 << 8,	//instructions for the component character follow the last component.
 	USE_MY_METRICS:		1 << 9,	//Use metrics from this component for the compound glyph.
 	OVERLAP:			1 << 10,	//the components of this compound glyph overlap.
+	SCALED_OFFSET:		1 << 11,	//the offset is scaled by the component's matrix.
+	UNSCALED_OFFSET:	1 << 12,	//the offset is not scaled (the default).
 } as const;
 
 class Instructions extends Uint8Array {
@@ -807,58 +858,139 @@ class Instructions extends Uint8Array {
 
 
 //@internal
+export const COMPONENT = COMPOUND;
+
+//@internal
 export function readComposite(file: bin.stream) {
-	const entryType = {
-		flags: u16,
-		index: u16,
-	};
-
-	const refs: glyphRef[] = [];
-	let all_flags = 0;
+	const refs: GlyphRef[] = [];
+	let all_flags = 0, overlap = false;
 	for (;;) {
-		const	entry	= bin.read(file, entryType);
-		const	flags	= entry.flags;
+		const	flags	= bin.read(file, u16);
+		const	index	= bin.read(file, u16);
 		all_flags	|= flags;
+		overlap		||= !!(flags & COMPOUND.OVERLAP);
 
-		const mat = float2x3.identity();
-		if (flags & COMPOUND.ARG12_WORDS) {
-			mat.z = float2(bin.read(file, fixed16), bin.read(file, fixed16));
-		} else {
-			mat.z = float2(bin.read(file, fixed8), bin.read(file, fixed8));
-		}
+		const ref: GlyphRef = {glyph: index, mat: float2x3.identity()};
+		// the two arguments: an offset (signed) or a pair of point numbers (unsigned), a byte each or a word each
+		const words = !!(flags & COMPOUND.ARG12_WORDS);
+		if (flags & COMPOUND.ARGS_XY)
+			ref.mat.z = words ? float2(bin.read(file, s16), bin.read(file, s16)) : float2(bin.read(file, s8), bin.read(file, s8));
+		else
+			ref.match = words ? [bin.read(file, u16), bin.read(file, u16)] : [bin.read(file, u8), bin.read(file, u8)];
 
 		if (flags & COMPOUND.HAVE_SCALE) {
-			mat.x.x = mat.y.y = bin.read(file, fixed16);
+			ref.mat.x.x = ref.mat.y.y = bin.read(file, f2dot14);
 		} else if (flags & COMPOUND.X_AND_Y_SCALE) {
-			mat.x.x = bin.read(file, fixed16);
-			mat.y.y = bin.read(file, fixed16);
+			ref.mat.x.x = bin.read(file, f2dot14);
+			ref.mat.y.y = bin.read(file, f2dot14);
 		} else if (flags & COMPOUND.TWO_BY_TWO) {
-			mat.x = float2(bin.read(file, fixed16), bin.read(file, fixed16));
-			mat.y = float2(bin.read(file, fixed16), bin.read(file, fixed16));
+			ref.mat.x = float2(bin.read(file, f2dot14), bin.read(file, f2dot14));		// where the x axis goes: the first two numbers
+			ref.mat.y = float2(bin.read(file, f2dot14), bin.read(file, f2dot14));
 		}
+		if (flags & COMPOUND.USE_MY_METRICS)
+			ref.useMyMetrics = true;
+		if (flags & COMPOUND.ROUND_TO_GRID)
+			ref.roundToGrid = true;
+		if (flags & COMPOUND.SCALED_OFFSET && !(flags & COMPOUND.UNSCALED_OFFSET))
+			ref.scaledOffset = true;
 
-		refs.push({glyph: entry.index, mat});
+		refs.push(ref);
 		if (!(flags & COMPOUND.MORE_COMPONENTS))
 			break;
 	}
-	return {refs, have_instructions: !!(all_flags & COMPOUND.HAVE_INSTRUCTIONS)};
+	return {refs, overlap, have_instructions: !!(all_flags & COMPOUND.HAVE_INSTRUCTIONS)};
 }
 
-class GlyphReader extends bin.ReadClass({
+// The outline Glyph.curve holds, from contours of points as a glyph stores them (each a run of {x, y, on}). A contour
+// has to begin on a point on the curve, since that is where the outline starts and ends. TrueType lets a contour begin
+// anywhere (a round glyph's often starts on a control point), so the points from the first on-curve one to the end are
+// moved to the front. A contour with none at all is made of off-curve points only, and starts at the point the format
+// implies halfway between its last and first. A point or a line is no outline, and is left out.
+//@internal
+export function contoursToCurve(contours: {x: number, y: number, on: boolean}[][]): curveVertex[] {
+	const out: curveVertex[] = [];
+	for (const points of contours) {
+		if (points.length < 3)
+			continue;
+		const contour: curveVertex[] = points.map(p => curveVertex<number>(p.x, p.y, p.on ? ON_CURVE : OFF_BEZ2));
+		let k = contour.findIndex(v => v.flags == ON_CURVE);
+		if (k < 0) {
+			const last = contour[contour.length - 1], first = contour[0];
+			contour.unshift(curveVertex((last.x + first.x) / 2, (last.y + first.y) / 2, ON_CURVE));
+			k = 0;
+		}
+		arrayRotate(contour, 0, contour.length, contour.length - k);		// rotate right by what follows the on-curve point
+		contour[0].flags = ON_BEGIN;
+		out.push(...contour);
+	}
+	return out;
+}
+
+// A glyph as glyf stores it, to read or to write. Read from a stream it is the Glyph that getGlyph gives. Made from a
+// Glyph's parts (an outline or components, a bounding box and whether it overlaps) it gives the bytes for glyf with
+// toBytes(). Hinting instructions are written only if they are given here: they are about the numbering of the points
+// they were made for, which a glyph's outline in Glyph.curve does not keep.
+//@internal
+export class GlyphSerialiser extends bin.Class({
 	num_contours:	s16,
 	min:			vec2(s16),
 	max:			vec2(s16),
 }) implements Glyph {
 	curve?:			curveVertex[];
-	refs?:			glyphRef[];
+	refs?:			GlyphRef[];
 	instructions?:	Instructions;
+	overlap?:		boolean;
 
-	constructor(file: bin.stream) {
-		super(file);
+	constructor(file: bin.stream);
+	constructor(glyph: Partial<Pick<Glyph, 'curve' | 'refs' | 'min' | 'max' | 'overlap' | 'instructions'>>, options?: {tolerance?: number});
+	constructor(file: bin.stream | Partial<Glyph>, options?: {tolerance?: number}) {
+		if (file instanceof bin._stream) {
+			super(file);
+			this.decodeGlyph(file);
+			return;
+		}
 
+		const round = (v: number) => {
+			v = Math.round(v);
+			if (v < -32768 || v > 32767)
+				throw new RangeError(`coordinate ${v} does not fit a TrueType glyph`);
+			return v;
+		};
+
+		if (file.refs?.length) {
+			// the box has to be given, as what the components make is not known here
+			if (!file.min || !file.max)
+				throw new Error('a composite glyph needs its bounding box');
+			super({num_contours: -1, min: float2(round(file.min.x), round(file.min.y)), max: float2(round(file.max.x), round(file.max.y))});
+			this.refs = file.refs;
+		} else {
+			// cubics become quadratics; each coordinate is a whole number of font units
+			const source = file.curve ?? [];
+			const quadratic = source.every(v => v.flags <= OFF_BEZ2) ? source : bezier2Curve(source, options?.tolerance ?? 0.5);
+			const curve = quadratic.map(v => curveVertex(round(v.x), round(v.y), v.flags));
+			// the box of all its points, those off the curve too, as the format has it
+			const xs = curve.map(v => v.x), ys = curve.map(v => v.y);
+			super({
+				num_contours:	curve.filter(v => v.flags === ON_BEGIN).length,
+				min:			curve.length ? float2(Math.min(...xs), Math.min(...ys)) : float2(0, 0),
+				max:			curve.length ? float2(Math.max(...xs), Math.max(...ys)) : float2(0, 0),
+			});
+			this.curve = curve;
+		}
+		this.overlap		= file.overlap || undefined;
+		this.instructions	= file.instructions as Instructions | undefined;
+	}
+
+	// what the glyph has, for the tables that summarise the glyphs
+	get points()		{ return this.curve?.length ?? 0; }
+	get contours()		{ return Math.max(this.num_contours, 0); }
+	get components()	{ return this.refs?.length ?? 0; }
+
+	decodeGlyph(file: bin.stream) {
 		if (this.num_contours < 0) {
-			const {refs, have_instructions} = readComposite(file);
+			const {refs, have_instructions, overlap} = readComposite(file);
 			this.refs = refs;
+			this.overlap = overlap || undefined;
 			if (have_instructions)
 				this.instructions	= bin.read(file, bin.Buffer(u16)) as Instructions;
 
@@ -885,40 +1017,134 @@ class GlyphReader extends bin.ReadClass({
 
 
 			let		x	= 0;
-			const curve = flags.map(f => new curveVertex(
-				x += getDelta(!!(f & SIMPLE.SHORT_X), !!(f & SIMPLE.SAME_X)),
-				0,
-				f & SIMPLE.ON_CURVE ? curveVertex.ON_CURVE : curveVertex.OFF_BEZ2,
-			));
+			const points = flags.map(f => ({
+				x:	x += getDelta(!!(f & SIMPLE.SHORT_X), !!(f & SIMPLE.SAME_X)),
+				y:	0,
+				on:	!!(f & SIMPLE.ON_CURVE),
+			}));
 
 			x = 0;
 			flags.forEach((f, i) => {
-				curve[i].y		= x += getDelta(!!(f & SIMPLE.SHORT_Y), !!(f & SIMPLE.SAME_Y));
+				points[i].y		= x += getDelta(!!(f & SIMPLE.SHORT_Y), !!(f & SIMPLE.SAME_Y));
 			});
+			this.overlap	= !!(flags[0] & SIMPLE.OVERLAP) || undefined;
 
-			// Each contour has to begin on a point that is on the curve, since that is where the outline starts and ends.
-			// TrueType lets a contour begin anywhere (a round glyph's often starts on a control point), so the points
-			// from the first on-curve one to the end are moved to the front. A contour with none at all is made of
-			// off-curve points only, and starts at the point the format implies halfway between its last and first.
-			const contours: curveVertex[] = [];
-			for (let i = 0, j = 0; i < this.num_contours; i++) {
-				const j1 = end_pts[i] + 1;
-				const contour = curve.slice(j, j1);
-				j = j1;
-				if (contour.length < 3)		// a point or a line is no outline
-					continue;
-				let k = contour.findIndex(v => v.flags == curveVertex.ON_CURVE);
-				if (k < 0) {
-					const last = contour[contour.length - 1], first = contour[0];
-					contour.unshift(new curveVertex((last.x + first.x) / 2, (last.y + first.y) / 2, curveVertex.ON_CURVE));
-					k = 0;
-				}
-				arrayRotate(contour, 0, contour.length, contour.length - k);		// rotate right by what follows the on-curve point
-				contour[0].flags = curveVertex.ON_BEGIN;
-				contours.push(...contour);
-			}
-			this.curve	= contours;
+			const contours = end_pts.map((e, i) => points.slice(i ? end_pts[i - 1] + 1 : 0, e + 1));
+			this.curve	= contoursToCurve(contours);
 		}
+	}
+
+	write(file: bin.stream) {
+		super.write(file);
+		if (this.num_contours < 0)
+			this.encodeComposite(file);
+		else
+			this.encodeGlyph(file);
+		file.align(4);
+	}
+
+	// glyf's entry for the glyph, padded to a multiple of four bytes. A glyph with nothing to draw has no entry at all.
+	toBytes() {
+		if (!this.points && !this.components)
+			return new Uint8Array(0);
+		// (Class's own toBytes writes only the header's fields, not what write() adds)
+		const stream = new bin.growingStream();
+		this.write(stream);
+		return stream.terminate();
+	}
+
+	// the points of a simple glyph: where each contour ends, the instructions, a flag for each point (a run of the same
+	// flag stored once, with a count), then the x and the y coordinates, each as the change from the point before
+	encodeGlyph(file: bin.stream) {
+		const curve = this.curve ?? [];
+		const end_pts = curve.flatMap((v, i) => v.flags === ON_BEGIN && i ? [i - 1] : []);
+		end_pts.push(curve.length - 1);
+
+		const flags: number[] = [], dxs: number[] = [], dys: number[] = [];
+		let px = 0, py = 0;
+		curve.forEach((v, i) => {
+			const dx = v.x - px, dy = v.y - py;
+			let f = v.flags === OFF_BEZ2 ? 0 : SIMPLE.ON_CURVE;
+			// a change of zero is just said to be the same; one that fits a byte is a byte, with its sign in the flag
+			f |= dx === 0 ? SIMPLE.SAME_X : Math.abs(dx) < 256 ? SIMPLE.SHORT_X | (dx > 0 ? SIMPLE.SAME_X : 0) : 0;
+			f |= dy === 0 ? SIMPLE.SAME_Y : Math.abs(dy) < 256 ? SIMPLE.SHORT_Y | (dy > 0 ? SIMPLE.SAME_Y : 0) : 0;
+			if (!i && this.overlap)
+				f |= SIMPLE.OVERLAP;
+			flags.push(f);
+			dxs.push(dx);
+			dys.push(dy);
+			px = v.x;
+			py = v.y;
+		});
+
+		bin.writen(file, u16, end_pts);
+		bin.write(file, bin.Buffer(u16), this.instructions ?? new Uint8Array(0));
+		for (let i = 0; i < flags.length;) {
+			let n = 1;
+			while (i + n < flags.length && flags[i + n] === flags[i] && n < 256)
+				n++;
+			if (n > 1) {
+				bin.write(file, u8, flags[i] | SIMPLE.REPEAT);
+				bin.write(file, u8, n - 1);
+			} else {
+				bin.write(file, u8, flags[i]);
+			}
+			i += n;
+		}
+		const axes: [number[], number, number][] = [[dxs, SIMPLE.SHORT_X, SIMPLE.SAME_X], [dys, SIMPLE.SHORT_Y, SIMPLE.SAME_Y]];
+		for (const [deltas, SHORT, SAME] of axes)
+			flags.forEach((f, i) => {
+				if (f & SHORT)
+					bin.write(file, u8, Math.abs(deltas[i]));
+				else if (!(f & SAME))
+					bin.write(file, s16, deltas[i]);
+			});
+	}
+
+	// the components of a composite: each with the flags that say how what follows is stored. How its arguments are
+	// sized and which form its scale takes are worked out here from the matrix, so that only what a matrix cannot say
+	// (see GlyphRef) has to be given.
+	encodeComposite(file: bin.stream) {
+		const refs = this.refs!;
+		refs.forEach((ref, i) => {
+			const m = ref.mat;
+			const args = ref.match ?? [Math.round(m.z.x), Math.round(m.z.y)];
+			const words = ref.match ? args.some(a => a > 255) : args.some(a => a < -128 || a > 127);
+			let flags = (ref.match ? 0 : COMPOUND.ARGS_XY) | (words ? COMPOUND.ARG12_WORDS : 0);
+			if (i < refs.length - 1)
+				flags |= COMPOUND.MORE_COMPONENTS;
+			else if (this.instructions?.length)
+				flags |= COMPOUND.HAVE_INSTRUCTIONS;
+			if (ref.useMyMetrics)
+				flags |= COMPOUND.USE_MY_METRICS;
+			if (ref.roundToGrid)
+				flags |= COMPOUND.ROUND_TO_GRID;
+			if (ref.scaledOffset)
+				flags |= COMPOUND.SCALED_OFFSET;
+			if (this.overlap && !i)
+				flags |= COMPOUND.OVERLAP;
+
+			let scale: number[] = [];
+			if (m.x.y === 0 && m.y.x === 0) {
+				if (m.x.x !== 1 || m.y.y !== 1) {
+					flags |= m.x.x === m.y.y ? COMPOUND.HAVE_SCALE : COMPOUND.X_AND_Y_SCALE;
+					scale = m.x.x === m.y.y ? [m.x.x] : [m.x.x, m.y.y];
+				}
+			} else {
+				flags |= COMPOUND.TWO_BY_TWO;
+				scale = [m.x.x, m.x.y, m.y.x, m.y.y];
+			}
+
+			bin.write(file, u16, flags);
+			bin.write(file, u16, ref.glyph);
+			if (ref.match)
+				bin.writen(file, words ? u16 : u8, args);
+			else
+				bin.writen(file, words ? s16 : s8, args);
+			bin.writen(file, f2dot14, scale);
+		});
+		if (this.instructions?.length)
+			bin.write(file, bin.Buffer(u16), this.instructions);
 	}
 }
 
@@ -926,17 +1152,30 @@ class GlyphReader extends bin.ReadClass({
 //	sbix	Standard Bitmap Graphics Table	(TTF + OTF)
 //-----------------------------------------------------------------------------
 
+// a strike's glyphs: glyphDataOffsets[numGlyphs + 1], then the records they point at (from the strike's start), each
+// as long as the gap to the next offset. The count is not stored: the first record follows the offsets directly.
+const sbixGlyphs = {
+	get: (s: bin.stream) => {
+		const first		= s.read(u32);
+		const offsets	= [first];
+		for (let n = first / 4 - 2; n > 0; --n)
+			offsets.push(s.read(u32));
+		return offsets.slice(0, -1).map((off, i) => {
+			const size = offsets[i + 1] - off - 8;
+			return size < 0 ? {originOffset: float2(0, 0), type: '', data: new Uint8Array(0)}
+				: s.offsetStream(off).read({originOffset: vec2(s16), type: TAG, data: bin.Buffer(size)}) as GlyphImage;
+		});
+	},
+	put: () => { throw new Error('sbix is read only'); },
+} as unknown as bin.TypeT<GlyphImage[]>;
+
 const sbix = {
 	version:	u16,	//1
 	flags:		bin.as(u16, bin.EnumString( {DRAW_OUTLINES: 1 << 1})),
 	strikes:	bin.Array(u32, bin.Offset(u32, {
 		ppem:	u16,							//The PPEM size for which this strike was designed.
 		ppi:	u16,							//The device pixel density (in PPI) for which this strike was designed. (E.g., 96 PPI, 192 PPI.)
-		glyphs: bin.RemainingArray(as<GlyphImage>(bin.Offset(u32, {
-			originOffset:	vec2(s16),			//The position of the left edge of the bitmap graphic in relation to the glyph design space origin.
-			type:			TAG,				//Indicates the format of the embedded graphic data: one of 'jpg ', 'png ' or 'tiff', or 'dupe' (which indicates data is a uint16be glyphid)
-			data:			bin.Remainder,	//The actual embedded graphic data. The total length is inferred from sequential entries in the glyphDataOffsets array and the fixed size (8 bytes) of the preceding fields.
-		}))),
+		glyphs: sbixGlyphs,
 	})),
 };
 
@@ -1942,9 +2181,26 @@ const tableReaders = {
 //@internal
 export const tableTypes = Object.keys(tableReaders);
 
+// a table is decoded the first time it is read, and from then on is that value. It stays configurable so that
+// loadTable() can replace the table with a re-read of new bytes.
 function fix<T>(obj: any, name: string, value: T): T {
-	Object.defineProperty(obj, name, {value, writable: false, configurable: false});
+	Object.defineProperty(obj, name, {value, writable: false, configurable: true, enumerable: true});
 	return value;
+}
+
+// where a component puts its glyph: the matrix, with the offset scaled by it where the component says so. (A component
+// placed by matching points is put at the origin, as what its point numbers name is not kept by the outlines.)
+function placement(ref: GlyphRef) {
+	const m = ref.mat;
+	return ref.scaledOffset
+		? float2x3(m.x, m.y, float2(m.x.x * m.z.x + m.y.x * m.z.y, m.x.y * m.z.x + m.y.y * m.z.y))
+		: m;
+}
+
+export interface GlyphSnapshot {
+	data?:		Uint8Array;
+	bearing?:	number;
+	edit?:		{min: {x: number, y: number}, max: {x: number, y: number}, points: number, contours: number, components?: number};
 }
 
 export class Font extends makeClass<{
@@ -1958,7 +2214,18 @@ export class Font extends makeClass<{
 	family(): string | undefined { return this.name?.get(ID.PREF_FAMILY) ?? this.name?.get(ID.FAMILY); }
 	subfamily(): string { return this.name?.get(ID.PREF_SUBFAMILY) ?? this.name?.get(ID.SUBFAMILY) ?? 'Regular'; }
 
+	// Every table of the file as it was read -- those with no reader here too -- so that a font can be written out
+	// again without losing what is not understood. Tables are decoded lazily from these bytes, which are never
+	// changed in place: an edit goes through a method that says which table it changes (see `modified`).
+	rawTables	= new Map<string, Uint8Array>();
+	sfntVersion	= 0x00010000;					// 0x00010000, or 'OTTO' for a font with CFF outlines
+	// the tables that are to be written from the font's data rather than copied from rawTables
+	modified	= new Set<string>();
+	// what has been done to each edited glyph, for the maxima the tables that summarise the glyphs must cover
+	edits		= new Map<number, {min: {x: number, y: number}, max: {x: number, y: number}, points: number, contours: number, components?: number}>();
+
 	loadTable(tag: string, data: Uint8Array) {
+		this.rawTables.set(tag, data);
 		const type = tableReaders[tag as keyof typeof tableReaders];
 		if (type) {
 			Object.defineProperty(this, tag, {
@@ -1974,6 +2241,134 @@ export class Font extends makeClass<{
 		}
 	}
 
+	//-------------------------------------------------------------------------
+	//	editing and writing (TrueType outlines)
+	//-------------------------------------------------------------------------
+
+	// Replaces a glyph with `glyph`, as getGlyph gives one (so a glyph from getGlyph can be changed and put back): its
+	// outline from `curve`, or if it has `refs` a composite of them, with the bounding box it was given or else that of
+	// what they make. Its hinting instructions are dropped. The glyph's left side bearing follows its new extent; its
+	// advance is left alone (see setAdvance). Only the glyphs of a font with TrueType outlines can be written.
+	setGlyph(id: number, glyph: Partial<Pick<Glyph, 'curve' | 'refs' | 'min' | 'max' | 'overlap'>>) {
+		const glyphs = this.glyphdata;
+		if (!glyphs)
+			throw new Error('only a font with TrueType outlines (glyf) can have its glyphs written');
+		if (!Number.isInteger(id) || id < 0 || id >= glyphs.length)
+			throw new RangeError(`no glyph ${id}`);
+
+		// the box the glyph had, which is in the first bytes of what is stored
+		const before = glyphs[id];
+		const wasEmpty = !before || before.length < 10;
+		const was = {min: {x: wasEmpty ? 0 : new DataView(before.buffer, before.byteOffset).getInt16(2)}};
+		let {min, max} = glyph;
+		if (glyph.refs?.length && (!min || !max)) {
+			const all = glyph.refs.flatMap(ref => transformCurve(this.getGlyphCurves(ref.glyph), placement(ref)));
+			min = all.length ? float2(Math.min(...all.map(v => v.x)), Math.min(...all.map(v => v.y))) : float2(0, 0);
+			max = all.length ? float2(Math.max(...all.map(v => v.x)), Math.max(...all.map(v => v.y))) : float2(0, 0);
+		}
+		const encoded = new GlyphSerialiser({curve: glyph.curve, refs: glyph.refs, min, max, overlap: glyph.overlap});
+		glyphs[id]		= encoded.toBytes();
+		this.cached[id]	= undefined;		// read again from what was written, so that it is what a reader will see
+		this.edits.set(id, {min: encoded.min, max: encoded.max, points: encoded.points, contours: encoded.contours, components: encoded.components});
+		this.modified.add('glyf');
+
+		// the left side bearing keeps following the glyph's left edge if it did, as the convention has it (head.flags bit 1),
+		// and is otherwise something the font chose, which is not changed
+		if (this.hmtx && (encoded.points || encoded.components) && (wasEmpty || this.snapshotGlyph(id).bearing === was.min.x)) {
+			const m = this.hmtx.metrics;
+			if (id < m.length)
+				m[id].bearing = encoded.min.x;
+			else
+				this.hmtx.bearing[id - m.length] = encoded.min.x;
+			this.modified.add('hmtx');
+		}
+	}
+
+	// Makes a font with CFF outlines one with TrueType outlines, which is what can be edited and written: each glyph's
+	// cubics become quadratics (within half a font unit), and the font is written as TrueType from then on. Hinting is
+	// lost. Returns false if there was nothing to convert.
+	convertToTrueType(): boolean {
+		if (this.glyphdata || !this['CFF '])
+			return false;
+		const n			= this.numGlyphs();
+		const curves	= Array.from({length: n}, (_, id) => this.getGlyphCurves(id));
+		this.glyphdata = Array.from({length: n}, () => new Uint8Array(0));
+		delete (this as any)['CFF '];
+		delete (this as any)['CFF2'];
+		this.rawTables.delete('CFF ');
+		this.rawTables.delete('CFF2');
+		this.rawTables.delete('VORG');
+		this.sfntVersion = 0x00010000;
+
+		const m1 = new maxp({
+			version:			0x00010000,
+			numGlyphs:			n,
+			maxPoints:			0,
+			maxContours:		0,
+			maxComponentPoints:	0,
+			maxComponentContours:	0,
+			maxZones:			1,
+			maxTwilightPoints:	0,
+			maxStorage:			0,
+			maxFunctionDefs:	0,
+			maxInstructionDefs:	0,
+			maxStackElements:	0,
+			maxSizeOfInstructions:	0,
+			maxComponentElements:	0,
+			maxComponentDepth:	0,
+		});
+		this.loadTable('maxp', bin.toBytes(m1));
+
+		for (let id = 0; id < n; id++)
+			this.setGlyph(id, {curve: curves[id]});
+		return true;
+	}
+
+	// A glyph's stored form, to put back exactly as it was -- hinting included, which setGlyph drops -- so that an edit
+	// can be undone and redone without going through the encoder again.
+	snapshotGlyph(id: number): GlyphSnapshot {
+		const h = this.hmtx;
+		const bearing = h ? (id < h.metrics.length ? h.metrics[id].bearing : h.bearing[id - h.metrics.length]) : undefined;
+		return {data: this.glyphdata?.[id], bearing, edit: this.edits.get(id)};
+	}
+
+	restoreGlyph(id: number, snap: GlyphSnapshot) {
+		if (!this.glyphdata || snap.data === undefined)
+			throw new Error('only a font with TrueType outlines (glyf) can have its glyphs written');
+		this.glyphdata[id] = snap.data;
+		this.cached[id] = undefined;
+		if (snap.edit)
+			this.edits.set(id, snap.edit);
+		else
+			this.edits.delete(id);
+		const h = this.hmtx;
+		if (h && snap.bearing !== undefined) {
+			if (id < h.metrics.length)
+				h.metrics[id].bearing = snap.bearing;
+			else
+				h.bearing[id - h.metrics.length] = snap.bearing;
+		}
+		this.modified.add('glyf').add('hmtx');
+	}
+
+	setAdvance(id: number, advance: number) {
+		const h = this.hmtx;
+		if (!h)
+			throw new Error('the font has no horizontal metrics');
+		if (!Number.isInteger(advance) || advance < 0 || advance > 65535)
+			throw new RangeError(`advance ${advance} does not fit`);
+		// a glyph past the long metrics shares the last advance, so it has none of its own to change
+		if (id >= h.metrics.length)
+			throw new Error(`glyph ${id} has no advance of its own: it takes the last one in hmtx`);
+		h.metrics[id].advance = advance;
+		this.modified.add('hmtx');
+	}
+
+	// the font as a file: every table as it was read except those that have been changed
+	save(): Uint8Array | Promise<Uint8Array> {
+		return new Uint8Array(0);
+	}
+
 	numGlyphs() {
 		return this.maxp?.numGlyphs ?? this.glyphdata?.length ?? this.COLR?.v1?.baseGlyphs.length ?? this.cached.length ?? 0;
 	}
@@ -1986,13 +2381,29 @@ export class Font extends makeClass<{
 			// a space (or any other glyph with no ink) has a zero-length entry in glyf, by design -- not something
 			// to read a GlyphReader header from, which needs at least a couple of bytes to be there at all
 			glyph = cff				? cff.getGlyph(id)
-				: data?.length		? new GlyphReader(new bin.stream(data))
+				: data?.length		? new GlyphSerialiser(new bin.stream(data))
 				: data				? {min: float2(0, 0), max: float2(0, 0)}
 				: undefined;
 			if (glyph)
 				this.cached[id] = glyph;
 		}
 		return glyph;
+	}
+
+	getGlyphCurves(id: number, depth = 0): curveVertex[] {
+		const glyph = this.getGlyph(id);
+		if (!glyph)
+			return [];
+		if (!glyph.refs)
+			return glyph.curve ?? [];
+
+		// a component can itself be a composite; a loop of them is a malformed font
+		const out = [...glyph.curve ?? []];
+		if (depth < 8)
+			for (const ref of glyph.refs)
+				out.push(...transformCurve(this.getGlyphCurves(ref.glyph, depth + 1), placement(ref)));
+		return out;
+
 	}
 
 	getGlyphMapping() {
@@ -2023,8 +2434,7 @@ export class Font extends makeClass<{
 			const images = this.sbix.strikes[i].glyphs;
 			if (images[id].type === 'dupe')
 				id = (images[id].data[0] << 8) + images[id].data[1];
-			const image = images[id];
-			return {...image, data:image.data.subarray(images[id + 1].data.byteLength - 8)};
+			return images[id];
 
 		} else if (this.CBLC && this.CBDT) {
 			const i 	=  argmin(this.CBLC.bitmapSizes, i => Math.abs(i.ppemX - ppem));

@@ -59,6 +59,11 @@ if (font instanceof Font) {
 
 The browser entry configures WOFF and WOFF2 decompression using `DecompressionStream` when available. The default package entry still includes `loadFile`, which is Node-only.
 
+## Writing
+A font can be edited and written: `font.setGlyph(id, glyph)` replaces a TrueType outline (cubics are converted to quadratics), `font.convertToTrueType()` makes a CFF font editable, and `font.save()`, `await font.saveWOFF()` and `await font.saveWOFF2()` give the file. Tables that were not changed are written byte for byte. A `Glyph` holds an outline (`curve`, each contour beginning on an on-curve point) or a composite (`refs`, each a matrix plus `useMyMetrics`, `roundToGrid`, `scaledOffset` or `match` where it has them), and `overlap`; `setGlyph` takes one back, so a glyph from `getGlyph` can be changed and put back. A font read from a WOFF2 with the glyf transform has its glyph data made from the decoded glyphs, so it can be written like any other; hinting instructions on glyphs are not kept when a glyph is written.
+
+Compression is done by the codecs `@isopodlabs/binary` has configured. The default entry point (node) configures zlib for WOFF and Brotli for WOFF2. The browser entry point configures neither: WOFF uses `CompressionStream` where there is one, and for WOFF2 you supply a Brotli compressor with `configureCompression('brotli', async data => ...)` from `@isopodlabs/binary`.
+
 ## Supported File Types
 The binary_font package supports reading and parsing the following font formats:
 
