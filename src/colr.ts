@@ -109,7 +109,7 @@ export class PaintContext {
 	addLayer(fill: Fill) {
 		if (this.curves.length) {
 			const sub: Layer = {
-				curves: this.curves,
+				curve: this.curves,
 				fill: fill,
 			};
 			this.layers.push(sub);

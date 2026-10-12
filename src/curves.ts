@@ -1,4 +1,5 @@
-import { float2, reflect, float2x2, float2x3, max_circle_point, mid, lerp }  from '@isopodlabs/maths/vector';
+import { float2, reflect, float2x2, float2x3, max_circle_point, mid, lerp, normalise }  from '@isopodlabs/maths/vector';
+import { Matrix } from '@isopodlabs/maths/linear';
 import { circle, bezier3, line2, bezier2, bezierSpline2, bezierSpline3, bezier2DistanceSq, bezier2Crossings } from '@isopodlabs/maths/geometry';
 
 export interface color {
@@ -14,6 +15,7 @@ export interface color {
 
 export const ON_BEGIN	= 0;
 export const ON_CURVE	= 1;
+export const ON_END		= 4;	// an on-curve point that ends a contour left open, which is otherwise closed back to its begin point
 export const OFF_BEZ2	= 2;
 export const OFF_BEZ3	= 3;
 export const OFF_ARC	= 8;
@@ -23,8 +25,8 @@ export interface curveVertex<T extends number = number> {
 	x: number, y: number, flags: T;
 }
 
-export type bezier2Curve = curveVertex<typeof ON_BEGIN | typeof ON_CURVE| typeof OFF_BEZ2>[];
-export type bezier3Curve = curveVertex<typeof ON_BEGIN | typeof ON_CURVE| typeof OFF_BEZ2 | typeof OFF_BEZ3>[];
+export type bezier2Curve = curveVertex<typeof ON_BEGIN | typeof ON_CURVE | typeof ON_END | typeof OFF_BEZ2>[];
+export type bezier3Curve = curveVertex<typeof ON_BEGIN | typeof ON_CURVE | typeof ON_END | typeof OFF_BEZ2 | typeof OFF_BEZ3>[];
 
 export function curveVertex<T extends number>(x: number, y: number, flags: T) : curveVertex<T> {
 	return {x, y, flags};
@@ -91,7 +93,7 @@ export function transformCurve<T extends number>(curve: curveVertex<T>[] | undef
 }
 
 //	translate between points-on-curve format and radii/angle format
-class ArcParams {
+export class ArcParams {
 	constructor(public radii: float2, public angle: number, public clockwise: boolean, public big: boolean) {}
 
 	static make2off(p0: float2, p1: float2, p2: float2, p3: float2) {	// 2 off-curve
@@ -158,7 +160,7 @@ class ArcParams {
 
 export interface CurveSink {
 	Begin(a: float2):void;
-	End():void;
+	End(open?: boolean):void;
 	Line(a: float2, b: float2): void;
 	Bezier2(a: float2, b: float2, c: float2): void;
 	Bezier3(a: float2, b: float2, c: float2, d: float2): void;
@@ -169,41 +171,7 @@ export interface CurveSink {
 export interface CurveSource {
 	run(sink: Partial<CurveSink>):void;
 }
-/*
-function MakeCurve(source: CurveSource) {
-	const out: curveVertex[] = [];
 
-	const sink: CurveSink = {
-		Begin(a: float2) {
-			out.push(makeCurveVertex(a, CURVE.ON_BEGIN));
-		},
-		End() {},
-		Line(a: float2, b: float2) {
-			out.push(makeCurveVertex(a, CURVE.ON_CURVE));
-		},
-		Bezier2(a: float2, b: float2, c: float2) {
-			out.push(makeCurveVertex(b, CURVE.OFF_BEZ2));
-			out.push(makeCurveVertex(c, CURVE.ON_CURVE));
-		},
-		Bezier3(a: float2, b: float2, c: float2, d: float2) {
-			out.push(makeCurveVertex(b, CURVE.OFF_BEZ3));
-			out.push(makeCurveVertex(c, CURVE.OFF_BEZ3));
-			out.push(makeCurveVertex(d, CURVE.ON_CURVE));
-		},
-		Arc(a: float2, b: float2, c: float2, d: float2) {
-			out.push(makeCurveVertex(b, CURVE.OFF_ARC));
-			out.push(makeCurveVertex(c, CURVE.OFF_ARC));
-			out.push(makeCurveVertex(d, CURVE.ON_ARC));
-		},
-		Arc3(a: float2, b: float2, c: float2) {
-			out.push(makeCurveVertex(b, CURVE.OFF_ARC));
-			out.push(makeCurveVertex(c, CURVE.ON_ARC));
-		}
-	};
-	source.run(sink);
-	return out;
-}
-*/
 export function parseCurve(curves: curveVertex[]): CurveSource {
 	let start			= float2(0, 0);
 	let prev			= float2(0, 0);
@@ -263,6 +231,12 @@ export function parseCurve(curves: curveVertex[]): CurveSource {
 					case ON_CURVE:
 						on_curve(sink, pt);
 						break;
+
+					case ON_END:
+						on_curve(sink, pt);
+						sink.End(true);
+						flags = ON_BEGIN;
+						break;
 		
 					case OFF_BEZ2:
 						if (prev_flags > 1) {
@@ -314,6 +288,108 @@ export function parseCurve(curves: curveVertex[]): CurveSource {
 	};
 }
 
+export function curveMaker(out: curveVertex[]): CurveSink {
+	let begin = 0;
+	return {
+		Begin(a)			{ begin = out.length; out.push(makeCurveVertex(a, ON_BEGIN)); },
+		// a contour of one point has nothing to draw, a closed one does not repeat its begin point, and an open one ends with ON_END
+		End(open)			{
+			const last = out[out.length - 1], first = out[begin];
+			if (out.length - begin < 2)
+				out.length = begin;
+			else if (open)
+				last.flags = ON_END;
+			else if (out.length - begin > 2 && last.flags === ON_CURVE && last.x === first.x && last.y === first.y)
+				out.pop();
+		},
+		Line(_a, b)			{ out.push(makeCurveVertex(b, ON_CURVE)); },
+		Bezier2(_a, b, c)	{ out.push(makeCurveVertex(b, OFF_BEZ2), makeCurveVertex(c, ON_CURVE)); },
+		Bezier3(_a, b, c, d){ out.push(makeCurveVertex(b, OFF_BEZ3), makeCurveVertex(c, OFF_BEZ3), makeCurveVertex(d, ON_CURVE)); },
+		Arc(_a, b, c, d)	{ out.push(makeCurveVertex(b, OFF_ARC), makeCurveVertex(c, OFF_ARC), makeCurveVertex(d, ON_CURVE)); },
+		Arc3(_a, b, c)		{ out.push(makeCurveVertex(b, OFF_ARC), makeCurveVertex(c, ON_CURVE)); },
+	};
+}
+
+export function putRect(p0: float2, p1: float2) : CurveSource {
+	return {
+		run(sink: Partial<CurveSink>) {
+			sink.Begin?.(p0);
+			sink.Line?.(p0, float2(p1.x, p0.y));
+			sink.Line?.(float2(p1.x, p0.y), p1);
+			sink.Line?.(p1, float2(p0.x, p1.y));
+			sink.End?.();
+		}
+	};
+}
+export function putRoundedRect(p0: float2, p1: float2, r: float2) : CurveSource {
+	return {
+		run(sink: Partial<CurveSink>) {
+			let a: float2;
+			const move = (to: float2) => { sink.Begin?.(to); a = to; };
+			const line = (to: float2) => { sink.Line?.(a!, to); a = to; };
+			const hline = (s: number) => line(float2(s, a!.y));
+			const vline = (s: number) => line(float2(a!.x, s));
+
+			const	ap = new ArcParams(r, 0, true, false);
+			const arc = (to: float2) => {
+				const	cp = ap.control_points(a, to);
+				sink.Arc?.(a, cp[0], cp[1], to);
+				a = to;
+			};
+
+			move(float2(p0.x + r.x, p0.y));
+			hline(p1.x - r.x);
+			arc(float2(p1.x, p0.y + r.y));
+			vline(p1.y - r.y);
+			arc(float2(p1.x - r.x, p1.y));
+			hline(p0.x + r.x);
+			arc(float2(p0.x, p1.y - r.y));
+			vline(p0.y + r.y);
+			arc(float2(p0.x + r.x, p0.y));
+			sink.End?.();
+		}
+	};
+}
+export function putEllipse(c: float2, r: float2) {
+	return {
+		run(sink: Partial<CurveSink>) {
+			let a: float2;
+			const move = (to: float2) => { sink.Begin?.(to); a = to; };
+			const ap = new ArcParams(r, 0, false, true);
+			const arc = (to: float2) => {
+				const	cp = ap.control_points(a, to);
+				sink.Arc?.(a, cp[0], cp[1], to);
+				a = to;
+			};
+			move(float2(c.x + r.x, c.y));
+			arc(float2(c.x - r.x, c.y));
+			arc(float2(c.x + r.x, c.y));
+			sink.End?.();
+		}
+	};
+}
+
+export function putPolygon(p: float2[], close: boolean) {
+	return {
+		run(sink: Partial<CurveSink>) {
+			let a: float2;
+			const move = (to: float2) => { sink.Begin?.(to); a = to; };
+			const line = (to: float2) => { sink.Line?.(a!, to); a = to; };
+
+			move(p[0]);
+			p.slice(1).forEach(line);
+			sink.End?.(!close);
+		}
+	};
+}
+
+
+/** Path data (or any CurveSource) as curve vertices, with an arc's two control points as arc vertices. */
+export function makeCurve(source: CurveSource, out = [] as curveVertex[]): curveVertex[] {
+	source.run(curveMaker(out));
+	return out;
+}
+
 export function curveExtent(source: CurveSource) {
 	const ext = new float2.extent;
 	source.run({
@@ -327,14 +403,26 @@ export function curveExtent(source: CurveSource) {
 	return ext;
 }
 
+export function curveExtentQuick(source: curveVertex[]) {
+	return float2.extent.from(source.map(pos));
+}
 
 //-----------------------------------------------------------------------------
 //	approximate curves
 //-----------------------------------------------------------------------------
 
+// an on-curve point halfway between two quadratic controls is implied by them, so it is not needed
+function stripImpliedPoints(curve: curveVertex[]) {
+	return curve.filter((v, i) => {
+		const	a = curve[i - 1], b = curve[i + 1];
+		return !(v.flags === ON_CURVE && a?.flags === OFF_BEZ2 && b?.flags === OFF_BEZ2 && mid(pos(a), pos(b)).sub(pos(v)).len() < 1e-9 * (1 + Math.abs(v.x) + Math.abs(v.y)));
+	});
+}
+
+
 // an arc as cubics, at most a quarter turn each: the arc is a circular arc in the space of its ellipse, which the
 // ellipse's affine map carries (along with any bezier's control points) straight into place
-function arcToCubics(params: ArcParams, p0: float2, p1: float2): bezierSpline3<float2> {
+export function arcToCubics(params: ArcParams, p0: float2, p1: float2): bezierSpline3<float2> {
 	const	e		= params.ellipse(p0, p1);
 	const	ei		= e.inverse();
 	const	c0		= ei.mulPos(p0), c1 = ei.mulPos(p1);
@@ -379,7 +467,7 @@ export function bezier3Curve(curve: curveVertex[], tol: number) {
 	const	off	= (p: float2) => out.push(makeCurveVertex(p, OFF_BEZ2));
 
 	function cubic(_a: float2, b: float2, c: float2, d: float2) {
-		out.push(makeCurveVertex(c, OFF_BEZ3));
+		out.push(makeCurveVertex(b, OFF_BEZ3));
 		out.push(makeCurveVertex(c, OFF_BEZ3));
 		on(d);
 	}
@@ -396,6 +484,7 @@ export function bezier3Curve(curve: curveVertex[], tol: number) {
 		Bezier3(a, b, c, d)	{ cubic(a, b, c, d); },
 		Arc(a, b, c, d)		{ arc(ArcParams.make2off(a, b, c, d), a, d); },
 		Arc3(a, b, c)		{ arc(ArcParams.make1off(a, b, c), a, c); },
+		End(open)			{ if (open) out[out.length - 1].flags = ON_END; },
 	});
 	return out;
 }
@@ -464,7 +553,333 @@ export function bezier2Curve(curve: curveVertex[], tol: number) {
 		Bezier3(a, b, c, d)	{ cubic(a, b, c, d); },
 		Arc(a, b, c, d)		{ arc(ArcParams.make2off(a, b, c, d), a, d); },
 		Arc3(a, b, c)		{ arc(ArcParams.make1off(a, b, c), a, c); },
+		End(open)			{ if (open) out[out.length - 1].flags = ON_END; },
 	});
+	return out;
+}
+
+//-----------------------------------------------------------------------------
+//	simplify curves
+//-----------------------------------------------------------------------------
+
+type Emit = (sink: CurveSink) => void;
+interface Segment {
+	bez:	bezier3<float2>;	// the segment as a cubic, for fitting
+	emit:	Emit;				// the segment as it was
+}
+
+const CORNER	= Math.cos(Math.PI / 6);	// a sharper turn than this is kept as a corner, a gentler one may be merged across
+
+function segmentDir(b: bezier3<float2>, end: boolean) {
+	const	[p, ...q] = end ? [b.c3, b.c2, b.c1, b.c0] : [b.c0, b.c1, b.c2, b.c3];
+	return normalise(q.map(i => end ? p.sub(i) : i.sub(p)).find(d => d.lensq() > 0) ?? float2(1, 0));
+}
+
+// a curve fitted to points: where it is, its first and second derivatives, and how it is written
+interface Fitted {
+	evaluate(t: number): float2;
+	tangent(t: number): float2;
+	accel(t: number): float2;
+	emit: Emit;
+}
+
+// the quadratics through on-curve points c[0], c[2]... with the control points c[1], c[3]... between them, each taking an equal share of the parameter
+function quadChain(c: float2[]): Fitted {
+	const	spline	= new bezierSpline2(c), n = spline.length;
+	// the spline's own evaluate indexes past its last segment at t = 1
+	const	at		= (t: number) => {
+		const	k = Math.min(n - 1, Math.floor(t * n));
+		return {b: spline.get(k), s: t * n - k};
+	};
+	return {
+		evaluate(t)	{ const {b, s} = at(t); return b.evaluate(s); },
+		tangent(t)	{ const {b, s} = at(t); return b.tangent(s).scale(n); },
+		accel(t)	{ const {b} = at(t); return b.c2.sub(b.c1.scale(2)).add(b.c0).scale(2 * n * n); },
+		emit: sink => {
+			for (const b of spline)
+				sink.Bezier2(b.c0, b.c1, b.c2);
+		},
+	};
+}
+
+function cubicFitted(bez: bezier3<float2>): Fitted {
+	const	d2 = bez.spline().deriv().deriv(), d2x = d2.map(c => c.x), d2y = d2.map(c => c.y);
+	return {
+		evaluate:	t => bez.evaluate(t),
+		tangent:	t => bez.tangent(t),
+		accel:		t => float2(d2x.evaluate(t), d2y.evaluate(t)),
+		emit:		sink => sink.Bezier3(bez.c0, bez.c1, bez.c2, bez.c3),
+	};
+}
+
+// a way to fit a curve to points from p[0] to p[n] leaving along t1 and arriving along -t2
+type Maker = (p: float2[], u: number[], t1: float2, t2: float2) => Fitted | undefined;
+
+// handles along the end tangents, their lengths by least squares: the curve is base + h1 * w1(t) + h2 * w2(t) in the weights basis gives, and make builds it from the handle ends
+function handleMaker(basis: (t: number) => number[], make: (p0: float2, h1: float2, h2: float2, p3: float2) => Fitted): Maker {
+	return (p, u, t1, t2) => {
+		const	p0	= p[0], p3 = p[p.length - 1];
+		let		c00 = 0, c01 = 0, c11 = 0, x0 = 0, x1 = 0;
+		p.forEach((pt, i) => {
+			const	[w0, w1, w2, w3] = basis(u[i]);
+			const	a1	= t1.scale(w1), a2 = t2.scale(w2);
+			const	r	= pt.sub(p0.scale(w0 + w1)).sub(p3.scale(w2 + w3));
+			c00	+= a1.dot(a1);
+			c01	+= a1.dot(a2);
+			c11	+= a2.dot(a2);
+			x0	+= a1.dot(r);
+			x1	+= a2.dot(r);
+		});
+		const	det	= c00 * c11 - c01 * c01;
+		const	len	= p3.sub(p0).len();
+		let		l1	= (x0 * c11 - x1 * c01) / det;
+		let		l2	= (c00 * x1 - c01 * x0) / det;
+		if (!(l1 > 1e-6 * len && l2 > 1e-6 * len))
+			l1 = l2 = len / 3;
+		return make(p0, p0.add(t1.scale(l1)), p3.add(t2.scale(l2)), p3);
+	};
+}
+
+const cubicMaker = handleMaker(
+	t => [(1 - t) ** 3, 3 * t * (1 - t) ** 2, 3 * t * t * (1 - t), t ** 3],
+	(p0, h1, h2, p3) => cubicFitted(new bezier3(p0, h1, h2, p3))
+);
+
+// the weights, over p0, the controls q1..qn and p3, of the point at t on the chain of n quadratics through p0, q1, mid(q1, q2), q2 ... qn, p3
+function chainWeights(n: number, t: number) {
+	const	k = Math.min(n - 1, Math.floor(t * n)), s = t * n - k, v = 1 - s;
+	const	w = new Array<number>(n + 2).fill(0);
+	// the segment runs from the previous joint through control q(k+1) to the next, a joint being halfway between two controls
+	if (k) {
+		w[k]		+= v * v / 2;
+		w[k + 1]	+= v * v / 2;
+	} else {
+		w[0]		+= v * v;
+	}
+	w[k + 1] += 2 * s * v;
+	if (k < n - 1) {
+		w[k + 1]	+= s * s / 2;
+		w[k + 2]	+= s * s / 2;
+	} else {
+		w[n + 1]	+= s * s;
+	}
+	return w;
+}
+
+// a chain of n quadratics, whose joints are implied by the controls: the first and last controls lie along the end tangents and the rest are free, all by least squares
+const chainMaker = (n: number): Maker => (p, u, t1, t2) => {
+	const	p0 = p[0], p3 = p[p.length - 1], unknowns = 2 * n - 2;
+	if (p.length < 2 * n)
+		return;
+	const	N = Array.from({length: unknowns}, () => new Array<number>(unknowns).fill(0)), g = new Array<number>(unknowns).fill(0);
+	p.forEach((pt, i) => {
+		const	w = chainWeights(n, u[i]);
+		for (const c of ['x', 'y'] as const) {
+			// the point's coordinate is base + the unknowns' coefficients dotted with them: a and b, then the free controls' x and y
+			const	row = new Array<number>(unknowns).fill(0);
+			const	base = w[0] * p0[c] + w[1] * p0[c] + w[n] * p3[c] + w[n + 1] * p3[c];
+			row[0] = w[1] * t1[c];
+			row[1] = w[n] * t2[c];
+			for (let k = 2; k < n; k++)
+				row[2 * k - 2 + (c === 'x' ? 0 : 1)] = w[k];
+			for (let r = 0; r < unknowns; r++) {
+				g[r] += row[r] * (pt[c] - base);
+				for (let k = 0; k < unknowns; k++)
+					N[r][k] += row[r] * row[k];
+			}
+		}
+	});
+	const	x = Matrix(N).inverse()?.mulVec(g);
+	if (!x || !(x[0] > 0 && x[1] > 0))
+		return;
+	const	q = [p0.add(t1.scale(x[0])), ...Array.from({length: n - 2}, (_, k) => float2(x[2 + 2 * k], x[3 + 2 * k])), p3.add(t2.scale(x[1]))];
+	return quadChain([p0, ...q.flatMap((c, k) => k ? [mid(q[k - 1], c), c] : [c]), p3]);
+};
+
+// one quadratic, whose control point is where the end tangents meet
+const quadMaker: Maker = (p, _u, t1, t2) => {
+	const	p0	= p[0], p3 = p[p.length - 1], den = t1.cross(t2);
+	const	l1	= p3.sub(p0).cross(t2) / den, l2 = t1.cross(p3.sub(p0)) / den;
+	return l1 > 0 && l2 > 0 ? quadChain([p0, p0.add(t1.scale(l1)), p3]) : undefined;
+};
+
+function distToSegment(q: float2, a: float2, b: float2) {
+	const	ab = b.sub(a);
+	return q.sub(a.add(ab.scale(Math.min(1, Math.max(0, q.sub(a).dot(ab) / (ab.lensq() || 1)))))).len();
+}
+
+// whether the cubic strays more than tol from the polyline between the points, midway between each pair of them
+function bulges(bez: Fitted, p: float2[], u: number[], tol: number) {
+	return u.slice(1).some((u1, k) => {
+		const	q = bez.evaluate((u[k] + u1) / 2);
+		return Math.min(...p.slice(Math.max(0, k - 2), k + 3).slice(1).map((b, i) => distToSegment(q, p[Math.max(0, k - 2) + i], b))) > tol;
+	});
+}
+
+// a single curve through the points, with the end tangents given, if one is within tol of all of them
+function fitCurve(p: float2[], u: number[], t1: float2, t2: float2, tol: number, make: Maker) {
+	for (let iter = 0; iter < 5; iter++) {
+		const	f = make(p, u, t1, t2);
+		if (!f)
+			return;
+		if (p.every((pt, i) => f.evaluate(u[i]).sub(pt).len() <= tol) && !bulges(f, p, u, tol))
+			return f;
+		u = u.map((t, i) => {
+			const	q	= f.evaluate(t).sub(p[i]), v = f.tangent(t);
+			const	den	= v.lensq() + q.dot(f.accel(t));
+			return den ? Math.min(1, Math.max(0, t - q.dot(v) / den)) : t;
+		});
+	}
+}
+
+// the line from p[0] to p[n], if it is within tol of all the points
+function fitLine(p: float2[], tol: number) {
+	const	a	= p[0], d = p[p.length - 1].sub(a), len = d.len();
+	return len > 0 && p.every(pt => {
+		const	r = pt.sub(a), s = r.dot(d) / len;
+		return s >= -tol && s <= len + tol && Math.abs(r.cross(d)) <= tol * len;
+	});
+}
+
+function isCorner(a: Segment, b: Segment) {
+	return segmentDir(a.bez, true).dot(segmentDir(b.bez, false)) < CORNER;
+}
+
+// points along a run of smooth segments, with the unit tangent at each and the index of each segment's first; t0 and t1 are the tangents at its two ends
+// each segment has enough points that its chords lie within tol/8 of it, and are no longer than 16 tol
+function sampleRun(run: Segment[], t0: float2, t1: float2, tol: number) {
+	const	p: float2[] = [], t: float2[] = [], starts: number[] = [];
+	run.forEach((seg, i) => {
+		const	b	= seg.bez;
+		const	n	= Math.min(64, Math.max(2, Math.ceil(b.c3.sub(b.c0).len() / (16 * tol)), Math.ceil(Math.sqrt(6 * Math.max(b.c2.sub(b.c1.scale(2)).add(b.c0).len(), b.c3.sub(b.c2.scale(2)).add(b.c1).len()) / tol))));
+		starts.push(p.length);
+		for (let m = 0; m < n; m++) {
+			p.push(b.evaluate(m / n));
+			// at a joint between segments the tangent is the mean of the two sides, which suits polylines too
+			t.push(m ? normalise(b.tangent(m / n)) : i ? normalise(segmentDir(run[i - 1].bez, true).add(segmentDir(b, false))) : t0);
+		}
+	});
+	starts.push(p.length);
+	p.push(run[run.length - 1].bez.c3);
+	t.push(t1);
+	return {p, t, starts};
+}
+
+// the longest pieces of a run that are each a line or cubic within tol, with the breaks free to fall anywhere along it
+function simplifyRun(run: Segment[], t0: float2, t1: float2, tol: number, quad: boolean, sink: CurveSink) {
+	const	{p, t, starts}	= sampleRun(run, t0, t1, tol);
+	const	last	= p.length - 1;
+
+	const	fit = (i: number, j: number): Emit | undefined => {
+		const	seg = starts.indexOf(i);
+		if (seg >= 0 && starts[seg + 1] == j)
+			return run[seg].emit;
+
+		const	q = p.slice(i, j + 1);
+		if (fitLine(q, tol))
+			return s => s.Line(q[0], q[j - i]);
+
+		let		total = 0;
+		const	u = q.map((pt, k) => total += k ? pt.sub(q[k - 1]).len() : 0).map(l => l / total);
+		for (const make of quad ? [quadMaker, ...[2, 3, 4, 5, 6, 8].map(chainMaker)] : [cubicMaker]) {
+			const	f = fitCurve(q, u, t[i], t[j].scale(-1), tol, make);
+			if (f)
+				return f.emit;
+		}
+	};
+
+	for (let i = 0; i < last;) {
+		let	good = i + 1, bad = last + 1;
+		let	best = fit(i, good);
+
+		// double the piece until a fit fails, then bisect between the last that worked and the first that did not
+		while (good < last && bad > last) {
+			const	k = Math.min(last, i + 2 * (good - i)), f = fit(i, k);
+			if (f) {
+				good = k;
+				best = f;
+			} else {
+				bad = k;
+			}
+		}
+		while (bad - good > 1) {
+			const	k = (good + bad) >> 1, f = fit(i, k);
+			if (f) {
+				good = k;
+				best = f;
+			} else {
+				bad = k;
+			}
+		}
+		best!(sink);
+		i = good;
+	}
+}
+
+// the contour as lines and cubics, each run of smooth segments simplified on its own
+function simplifyContour(segs: Segment[], closed: boolean, tol: number, quad: boolean, sink: CurveSink) {
+	const	n		= segs.length;
+	// a closed contour starts at a corner when it has one, so that no run has to span its begin point
+	const	first	= closed ? Math.max(0, segs.findIndex((s, i) => isCorner(segs[(i || n) - 1], s))) : 0;
+	const	ordered	= [...segs.slice(first), ...segs.slice(0, first)];
+	const	loop	= closed && !isCorner(ordered[n - 1], ordered[0]);
+	const	dir0	= loop ? normalise(segmentDir(ordered[n - 1].bez, true).add(segmentDir(ordered[0].bez, false))) : segmentDir(ordered[0].bez, false);
+
+	sink.Begin(ordered[0].bez.c0);
+	for (let i = 0, j = 1; j <= n; j++) {
+		if (j == n || isCorner(ordered[j - 1], ordered[j])) {
+			simplifyRun(ordered.slice(i, j), i ? segmentDir(ordered[i].bez, false) : dir0, j == n && loop ? dir0 : segmentDir(ordered[j - 1].bez, true), tol, quad, sink);
+			i = j;
+		}
+	}
+	sink.End(!closed);
+}
+
+function simplifyContourVertices(curve: curveVertex[], tol: number, quadratic: boolean) {
+	const	out: curveVertex[] = [];
+	const	sink = curveMaker(out);
+	let		segs: Segment[] = [];
+	const	add = (bez: bezier3<float2>, emit: Emit = s => s.Bezier3(bez.c0, bez.c1, bez.c2, bez.c3)) => segs.push({bez, emit});
+
+	parseCurve(curve).run({
+		Begin()				{ segs = []; },
+		Line(a, b)			{
+			if (a.sub(b).lensq() > 0)
+				add(new bezier3(a, lerp(a, b, 1 / 3), lerp(a, b, 2 / 3), b), s => s.Line(a, b));
+		},
+		Bezier2(a, b, c)	{ add(new bezier3(a, lerp(a, b, 2 / 3), lerp(c, b, 2 / 3), c), s => s.Bezier2(a, b, c)); },
+		Bezier3(a, b, c, d)	{ add(new bezier3(a, b, c, d)); },
+		Arc(a, b, c, d)		{
+			for (const s of arcToCubics(ArcParams.make2off(a, b, c, d), a, d))
+				add(s);
+		},
+		Arc3(a, b, c)		{
+			for (const s of arcToCubics(ArcParams.make1off(a, b, c), a, c))
+				add(s);
+		},
+		End(open)			{
+			if (segs.length)
+				simplifyContour(segs, !open, tol, quadratic, sink);
+		},
+	});
+	return quadratic ? bezier2Curve(stripImpliedPoints(out), tol) : out;
+}
+
+/**
+ * Fewer control points for the same shape: runs of consecutive segments between corners are merged into lines and cubics, or with `quadratic` into lines and quadratics,
+ * wherever all of it stays within tol of the original. Arcs become cubics (or quadratics) even where not merged.
+ */
+export function simplifyCurve(curve: curveVertex[], tol: number, quadratic = false) {
+	const	out: curveVertex[] = [];
+	for (let i = 0, j = 1; i < curve.length; j++) {
+		if (j == curve.length || curve[j].flags === ON_BEGIN) {
+			const	contour = curve.slice(i, j), simple = simplifyContourVertices(contour, tol, quadratic);
+			// a contour that is already as compact as can be found is kept as it was
+			const	keep = simple.length >= contour.length && !(quadratic && contour.some(v => v.flags > OFF_BEZ2));
+			out.push(...(keep ? contour : simple));
+			i = j;
+		}
+	}
 	return out;
 }
 
@@ -485,7 +900,8 @@ export function curvepathDistance2(p: float2, curve: bezier2Curve): number {
 		},
 	});
 
-	return (crossings & 1 ? -1 : 1) * Math.sqrt(d2);
+	// d2 can come out a rounding error below zero for a point on the curve itself
+	return (crossings & 1 ? -1 : 1) * Math.sqrt(Math.max(d2, 0));
 }
 
 //-----------------------------------------------------------------------------
@@ -525,163 +941,6 @@ export type Fill =
 
 
 export interface Layer {
-	curves:		curveVertex[];
+	curve:		curveVertex[];
 	fill:		Fill;
 };
-
-//-----------------------------------------------------------------------------
-//	SVG
-//-----------------------------------------------------------------------------
-
-export function makeSVGPath(source: CurveSource) {
-	const commands: { command: string, params: number[]; }[] = [];
-
-	// the y flip mirrors the arc: the rotation and the sweep direction both reverse
-	function arc(ap: ArcParams, end: float2) {
-		commands.push({command: 'A', params: [ap.radii.x, ap.radii.y, -ap.angle * 180 / Math.PI, ap.big ? 1 : 0, ap.clockwise ? 0 : 1, end.x, -end.y]});
-	}
-	
-	source.run({
-		Begin(a) 				{ commands.push({command: 'M', params: [a.x, -a.y]}); },
-		Line(_a, b)	 			{ commands.push({command: 'L', params: [b.x, -b.y]}); },
-		Bezier2(_a, b, c)		{ commands.push({command: 'Q', params: [b.x, -b.y, c.x, -c.y]}); },
-		Bezier3(_a, b, c, d)	{ commands.push({command: 'C', params: [b.x, -b.y, c.x, -c.y, d.x, -d.y]}); },
-		Arc3(a, b, c)			{ arc(ArcParams.make1off(a, b, c), c); },
-		Arc(a, b, c, d)			{ arc(ArcParams.make2off(a, b, c, d), d); },
-	});
-	return commands.map(c => c.command + c.params.map(i => i.toString()).join(',')).join('');
-}
-
-// SVG path data. Coordinates are used as written (makeSVGPath's y flip is not undone). Subpaths are closed implicitly,
-// as parseCurve closes them, and a drawing command after Z starts a new subpath where the last one began.
-export function parseSVGpath(path: string): CurveSource {
-	const arity: Record<string, number> = {m: 2, l: 2, h: 1, v: 1, c: 6, s: 4, q: 4, t: 2, a: 7, z: 0};
-	const number = /\s*,?\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)/y;
-	const flag = /\s*,?\s*([01])/y;
-
-	return {
-		run(sink0) {
-			const sink: CurveSink = {Begin() {}, End() {}, Line() {}, Bezier2() {}, Bezier3() {}, Arc() {}, Arc3() {}, ...sink0};
-			let	cur		= float2(0, 0);
-			let	start	= cur;
-			let	prevKind = '';
-			let	ctrl: float2 | undefined;	// the previous curve's last control point, for the smooth commands
-			let	open	= false;
-			let	pos		= 0;
-
-			const close = () => {
-				if (open) {
-					if (cur.x !== start.x || cur.y !== start.y)
-						sink.Line(cur, start);
-					sink.End();
-					cur		= start;
-					open	= false;
-				}
-			};
-			const begin = (p: float2) => {
-				close();
-				sink.Begin(cur = start = p);
-				open = true;
-			};
-			const read = (re: RegExp) => {
-				re.lastIndex = pos;
-				const m = re.exec(path);
-				if (!m)
-					return NaN;
-				pos = re.lastIndex;
-				return parseFloat(m[1]);
-			};
-			const more = () => { number.lastIndex = pos; return number.test(path); };
-
-			for (const m of path.matchAll(/[a-zA-Z]/g)) {
-				if (m.index < pos)
-					continue;
-				pos = m.index + 1;
-				let		cmd	= m[0];
-				const	rel	= cmd === cmd.toLowerCase();
-				const	n	= arity[cmd.toLowerCase()];
-				if (n === undefined)
-					break;
-
-				if (n === 0) {
-					close();
-					ctrl = undefined;
-					continue;
-				}
-
-				do {
-					const	args: number[] = [];
-					for (let i = 0; i < n; i++)
-						args.push(read(cmd.toLowerCase() === 'a' && (i === 3 || i === 4) ? flag : number));
-					if (args.some(isNaN))
-						return;
-
-					const	ox = rel ? cur.x : 0, oy = rel ? cur.y : 0;
-					const	pt = (i: number) => float2(args[i] + ox, args[i + 1] + oy);
-					const	c = cmd.toLowerCase();
-
-					if (c === 'm') {
-						begin(pt(0));
-						ctrl = undefined;
-						cmd = rel ? 'l' : 'L';		// further pairs are implicit lines
-						continue;
-					}
-					if (!open)
-						begin(cur);
-
-					const	from = cur;
-					let		next = ctrl;
-					switch (c) {
-						case 'l': sink.Line(from, cur = pt(0)); next = undefined; break;
-						case 'h': sink.Line(from, cur = float2(args[0] + ox, from.y)); next = undefined; break;
-						case 'v': sink.Line(from, cur = float2(from.x, args[0] + oy)); next = undefined; break;
-						case 'q': {
-							const	b = pt(0);
-							sink.Bezier2(from, b, cur = pt(2));
-							next = b;
-							break;
-						}
-						case 't': {
-							const	b = ctrl && prevKind === 'q' ? from.add(from.sub(ctrl)) : from;
-							sink.Bezier2(from, b, cur = pt(0));
-							next = b;
-							break;
-						}
-						case 'c': {
-							const	b = pt(2);
-							sink.Bezier3(from, pt(0), b, cur = pt(4));
-							next = b;
-							break;
-						}
-						case 's': {
-							const	b = pt(0);
-							sink.Bezier3(from, ctrl && prevKind === 'c' ? from.add(from.sub(ctrl)) : from, b, cur = pt(2));
-							next = b;
-							break;
-						}
-						case 'a': {
-							const	to = pt(5);
-							const	rx = Math.abs(args[0]), ry = Math.abs(args[1]);
-							cur = to;
-							next = undefined;
-							if (to.x === from.x && to.y === from.y)
-								break;
-							if (rx === 0 || ry === 0) {
-								sink.Line(from, to);
-								break;
-							}
-							// the flags are large-arc then sweep; sweep is the direction of increasing angle, which ArcParams calls clockwise
-							const	ap = new ArcParams(float2(rx, ry), args[2] * Math.PI / 180, !!args[4], !!args[3]);
-							const	cp = ap.control_points(from, to);
-							sink.Arc(from, cp[0], cp[1], to);
-							break;
-						}
-					}
-					ctrl		= next;
-					prevKind	= c === 'q' || c === 't' ? 'q' : c === 'c' || c === 's' ? 'c' : '';
-				} while (more());
-			}
-			close();
-		}
-	};
-}

@@ -1,7 +1,8 @@
 import * as bin from '@isopodlabs/binary';
 import * as xml from '@isopodlabs/xml';
-import {float2, float2x3} from '@isopodlabs/maths/vector';
-import {color, curveVertex, ON_BEGIN, ON_CURVE, OFF_BEZ2, bezier2Curve, curveExtent, parseCurve, transformCurve, FILL, EXTEND, Fill, Layer, parseSVGpath, makeSVGPath} from './curves';
+import { float2, float2x3 } from '@isopodlabs/maths/vector';
+import { curveVertex, ON_BEGIN, ON_CURVE, OFF_BEZ2, bezier2Curve, parseCurve, transformCurve} from './curves';
+import { makeSVG, makeSVGPath, SVGlayers, extractGlyphElement, mergeGlyphSVG } from './svg';
 
 import {CFF} from "./cff";
 import {CPAL, COLR} from "./colr";
@@ -392,8 +393,7 @@ export function saveMetrics(m: Metrics) {
 //	maxp	Maximum Profile (TTF)
 //-----------------------------------------------------------------------------
 
-//@internal
-export class maxp extends bin.Class({
+export const maxp = {
 	version:				u32,	//0x00010000 (1.0)
 	numGlyphs:				u16,	//the number of glyphs in the font
 	_: bin.If(s => s.obj.version >= 0x00010000, {
@@ -411,7 +411,7 @@ export class maxp extends bin.Class({
 		maxComponentElements:	u16,	//number of glyphs referenced at top level
 		maxComponentDepth:		u16,	//levels of recursion, set to 0 if font has only simple glyphs
 	}),
-}) {};
+};
 
 //-----------------------------------------------------------------------------
 //	name	Naming Table	(TTF + OTF)
@@ -1407,6 +1407,14 @@ const SVG = {
 	reserved:	u32,//	Set to 0.
 };
 
+function getSVGTable(svg: bin.ReadType<typeof SVG>, id: number) {
+	return svg.documents.find(d => id >= d.startGlyphID && id <= d.endGlyphID);
+}
+function getSVGTableIndex(svg: bin.ReadType<typeof SVG>, id: number) {
+	return svg.documents.findIndex(d => id >= d.startGlyphID && id <= d.endGlyphID);
+}
+
+
 //-----------------------------------------------------------------------------
 //	GSUB + GPOS + GDEF Common	(OTF)
 //-----------------------------------------------------------------------------
@@ -2047,7 +2055,8 @@ const DSIG = {
 //	Font
 //-----------------------------------------------------------------------------
 
-function getElementById(e: xml.Element, id: string): xml.Element|undefined {
+
+export function getElementById(e: xml.Element, id: string): xml.Element|undefined {
 	if (e.attributes.id === id)
 		return e;
 
@@ -2056,93 +2065,6 @@ function getElementById(e: xml.Element, id: string): xml.Element|undefined {
 		if (x)
 			return x;
 	}
-}
-
-function gatherRefs(e: xml.Element, refs: Set<string>) {
-	if (e.name === 'use')
-		refs.add(e.attributes['xlink:href'].slice(1)); 
-
-	const fill = e.attributes.fill;
-	if (fill && fill.startsWith('url(#'))
-		refs.add(fill.slice(5, -1)); 
-
-	for (const i of e.allElements())
-		gatherRefs(i, refs);
-}
-
-function ExtractSVG(svg: xml.Element, g: xml.Element) {
-	const refs = new Set<string>;
-	gatherRefs(g, refs);
-
-	const children	= g.allElements();
-	const defs		= svg.firstElement()?.elements.defs;
-	
-	if (defs) {
-		const defs2: Record<string, xml.Element> = {};
-		for (const i of defs.allElements())
-			defs2[i.attributes.id] = i;
-
-		const localsdefs = new xml.Element('defs');
-		for (const i of refs.keys())
-			localsdefs.add(defs2[i]);
-
-		children.push(localsdefs);
-	}
-
-	const extent = new float2.extent;
-	for (const i of g.allElements()) {
-		if (i.name === 'path')
-			extent.combine(curveExtent(parseSVGpath(i.attributes.d)));
-	}
-	return makeSVG(children, extent);
-}
-
-function makeSVG(children: xml.Element[], extent: float2.extent) {
-	return new xml.Element('svg', {
-		xmlns:			"http://www.w3.org/2000/svg",
-		['xmlns:xlink']:"http://www.w3.org/1999/xlink",
-		version:		"1.1",
-		viewBox:		`${extent.min.x} ${extent.min.y} ${extent.extent().x} ${extent.extent().y}`,
-		width:			extent.extent().x,
-		height:			extent.extent().y
-	}, children);
-}
-
-function SVGcolor(c: color) {
-	return '#' + ((c.r << 16) + (c.g << 8) + (c.b << 0) + (1<< 24)).toString(16).slice(-6);
-}
-function makeSVGgradient(fill: Fill, id: string) {
-	if (fill.type !== FILL.SOLID) {
-		const stops = fill.gradient.stops.map(i => new xml.Element("stop", {offset: i.stop, 'stop-color': SVGcolor(i.color)}));
-		const gradientUnits = 'userSpaceOnUse';
-		const spreadMethod = fill.gradient.extend === EXTEND.REPEAT ? 'repeat' : fill.gradient.extend === EXTEND.REFLECT ? 'reflect' : undefined;
-
-		switch (fill.type) {
-			case FILL.LINEAR:
-				return new xml.Element('linearGradient', {id, x1: fill.p0.x, y1: -fill.p0.y, x2: fill.p1.x, y2: -fill.p1.y, gradientUnits, spreadMethod}, stops);
-			case FILL.SWEEP:
-				return new xml.Element('sweepGradient', {gradientUnits, spreadMethod}, stops);//unsupported by svg
-			case FILL.RADIAL:
-				return new xml.Element('radialGradient', {id, fx: fill.c0.centre.x, fy: fill.c0.centre.y, fr: fill.c0.radius, cx: fill.c1.centre.x, cy: fill.c1.centre.y, r: fill.c1.radius, gradientUnits, spreadMethod}, stops);
-		}
-	}
-}
-
-function COLRtoSVG(layers: Layer[]) {
-	let id = 1;
-
-	const extent	= new float2.extent;
-	const defs		= new xml.Element('defs');
-	const children	= [defs, ...layers.map(j => {
-		const d		= makeSVGPath(parseCurve(j.curves));
-		const fill	= j.fill.type === FILL.SOLID
-			? SVGcolor(j.fill.color)
-			: (defs.add(makeSVGgradient(j.fill, `g${id}`)!), `url(#g${id++})`);
-		extent.combine(curveExtent(parseSVGpath(d)));
-		return new xml.Element("path", {d, fill});
-	})];
-
-	return makeSVG(children, extent);
 }
 
 const tableReaders = {
@@ -2197,11 +2119,20 @@ function placement(ref: GlyphRef) {
 		: m;
 }
 
-export interface GlyphSnapshot {
-	data?:		Uint8Array;
-	bearing?:	number;
-	edit?:		{min: {x: number, y: number}, max: {x: number, y: number}, points: number, contours: number, components?: number};
-}
+const PNGSpec = {
+	sig: bin.Expect(bin.String(8, 'latin1'), "\x89PNG\r\n\x1A\n"),
+	_: bin.Merge(bin.RemainingRepeat({
+		length: u32,
+		type:   bin.String(4),
+		_: bin.Merge(bin.Size('length', bin.Switch(s => s.lookupObj('type'), {
+			IHDR:    { IHDR: { width: u32, height: u32, bitDepth: u8 } },
+			PLTE:    { PLTE: bin.Array(s => s.lookupObj('length') / 3, { r: u8, g: u8, b: u8 }) },
+			IDAT:    { IDAT: bin.Array(1, bin.Remainder) },
+			default: {},
+		}))),
+	}))
+};
+type PNGSpec = bin.ReadType<typeof PNGSpec>;
 
 export class Font extends makeClass<{
 	[K in keyof typeof tableReaders]?: bin.ReadType<typeof tableReaders[K]>
@@ -2224,149 +2155,25 @@ export class Font extends makeClass<{
 	// what has been done to each edited glyph, for the maxima the tables that summarise the glyphs must cover
 	edits		= new Map<number, {min: {x: number, y: number}, max: {x: number, y: number}, points: number, contours: number, components?: number}>();
 
+	// A table's reader applied to bytes that need not be the font's own, and its writer.
+	decodeTable<K extends keyof typeof tableReaders>(tag: K, data: Uint8Array): bin.ReadType<typeof tableReaders[K]> {
+		return bin.read(new bin.stream(data), tableReaders[tag]);
+	}
+	encodeTable(tag: keyof typeof tableReaders, value: object): Uint8Array {
+		const s = new bin.growingStream();
+		s.write(tableReaders[tag] as any, value);
+		return s.terminate();
+	}
+
 	loadTable(tag: string, data: Uint8Array) {
 		this.rawTables.set(tag, data);
-		const type = tableReaders[tag as keyof typeof tableReaders];
-		if (type) {
+		if (tag in tableReaders) {
 			Object.defineProperty(this, tag, {
-				// a class reader (bin.Class/bin.ReadClass) is constructed directly rather than through bin.read(),
-				// which would dispatch to its static get() -- fine for a Class, whose get() checks the stream type
-				// and returns synchronously for one of these, but ReadClass's get() is unconditionally async, so
-				// going through it would turn every table read into a Promise even though nothing here ever awaits
-				// real I/O (the whole table is already an in-memory buffer)
-				get() { return fix(this, tag, typeof type === 'function' ? new (type as new (s: bin.stream) => any)(new bin.stream(data)) : bin.read(new bin.stream(data), type)); },
+				get() { return fix(this, tag, this.decodeTable(tag as keyof typeof tableReaders, data)); },
 				enumerable: true,
 				configurable: true,
 			});
 		}
-	}
-
-	//-------------------------------------------------------------------------
-	//	editing and writing (TrueType outlines)
-	//-------------------------------------------------------------------------
-
-	// Replaces a glyph with `glyph`, as getGlyph gives one (so a glyph from getGlyph can be changed and put back): its
-	// outline from `curve`, or if it has `refs` a composite of them, with the bounding box it was given or else that of
-	// what they make. Its hinting instructions are dropped. The glyph's left side bearing follows its new extent; its
-	// advance is left alone (see setAdvance). Only the glyphs of a font with TrueType outlines can be written.
-	setGlyph(id: number, glyph: Partial<Pick<Glyph, 'curve' | 'refs' | 'min' | 'max' | 'overlap'>>) {
-		const glyphs = this.glyphdata;
-		if (!glyphs)
-			throw new Error('only a font with TrueType outlines (glyf) can have its glyphs written');
-		if (!Number.isInteger(id) || id < 0 || id >= glyphs.length)
-			throw new RangeError(`no glyph ${id}`);
-
-		// the box the glyph had, which is in the first bytes of what is stored
-		const before = glyphs[id];
-		const wasEmpty = !before || before.length < 10;
-		const was = {min: {x: wasEmpty ? 0 : new DataView(before.buffer, before.byteOffset).getInt16(2)}};
-		let {min, max} = glyph;
-		if (glyph.refs?.length && (!min || !max)) {
-			const all = glyph.refs.flatMap(ref => transformCurve(this.getGlyphCurves(ref.glyph), placement(ref)));
-			min = all.length ? float2(Math.min(...all.map(v => v.x)), Math.min(...all.map(v => v.y))) : float2(0, 0);
-			max = all.length ? float2(Math.max(...all.map(v => v.x)), Math.max(...all.map(v => v.y))) : float2(0, 0);
-		}
-		const encoded = new GlyphSerialiser({curve: glyph.curve, refs: glyph.refs, min, max, overlap: glyph.overlap});
-		glyphs[id]		= encoded.toBytes();
-		this.cached[id]	= undefined;		// read again from what was written, so that it is what a reader will see
-		this.edits.set(id, {min: encoded.min, max: encoded.max, points: encoded.points, contours: encoded.contours, components: encoded.components});
-		this.modified.add('glyf');
-
-		// the left side bearing keeps following the glyph's left edge if it did, as the convention has it (head.flags bit 1),
-		// and is otherwise something the font chose, which is not changed
-		if (this.hmtx && (encoded.points || encoded.components) && (wasEmpty || this.snapshotGlyph(id).bearing === was.min.x)) {
-			const m = this.hmtx.metrics;
-			if (id < m.length)
-				m[id].bearing = encoded.min.x;
-			else
-				this.hmtx.bearing[id - m.length] = encoded.min.x;
-			this.modified.add('hmtx');
-		}
-	}
-
-	// Makes a font with CFF outlines one with TrueType outlines, which is what can be edited and written: each glyph's
-	// cubics become quadratics (within half a font unit), and the font is written as TrueType from then on. Hinting is
-	// lost. Returns false if there was nothing to convert.
-	convertToTrueType(): boolean {
-		if (this.glyphdata || !this['CFF '])
-			return false;
-		const n			= this.numGlyphs();
-		const curves	= Array.from({length: n}, (_, id) => this.getGlyphCurves(id));
-		this.glyphdata = Array.from({length: n}, () => new Uint8Array(0));
-		delete (this as any)['CFF '];
-		delete (this as any)['CFF2'];
-		this.rawTables.delete('CFF ');
-		this.rawTables.delete('CFF2');
-		this.rawTables.delete('VORG');
-		this.sfntVersion = 0x00010000;
-
-		const m1 = new maxp({
-			version:			0x00010000,
-			numGlyphs:			n,
-			maxPoints:			0,
-			maxContours:		0,
-			maxComponentPoints:	0,
-			maxComponentContours:	0,
-			maxZones:			1,
-			maxTwilightPoints:	0,
-			maxStorage:			0,
-			maxFunctionDefs:	0,
-			maxInstructionDefs:	0,
-			maxStackElements:	0,
-			maxSizeOfInstructions:	0,
-			maxComponentElements:	0,
-			maxComponentDepth:	0,
-		});
-		this.loadTable('maxp', bin.toBytes(m1));
-
-		for (let id = 0; id < n; id++)
-			this.setGlyph(id, {curve: curves[id]});
-		return true;
-	}
-
-	// A glyph's stored form, to put back exactly as it was -- hinting included, which setGlyph drops -- so that an edit
-	// can be undone and redone without going through the encoder again.
-	snapshotGlyph(id: number): GlyphSnapshot {
-		const h = this.hmtx;
-		const bearing = h ? (id < h.metrics.length ? h.metrics[id].bearing : h.bearing[id - h.metrics.length]) : undefined;
-		return {data: this.glyphdata?.[id], bearing, edit: this.edits.get(id)};
-	}
-
-	restoreGlyph(id: number, snap: GlyphSnapshot) {
-		if (!this.glyphdata || snap.data === undefined)
-			throw new Error('only a font with TrueType outlines (glyf) can have its glyphs written');
-		this.glyphdata[id] = snap.data;
-		this.cached[id] = undefined;
-		if (snap.edit)
-			this.edits.set(id, snap.edit);
-		else
-			this.edits.delete(id);
-		const h = this.hmtx;
-		if (h && snap.bearing !== undefined) {
-			if (id < h.metrics.length)
-				h.metrics[id].bearing = snap.bearing;
-			else
-				h.bearing[id - h.metrics.length] = snap.bearing;
-		}
-		this.modified.add('glyf').add('hmtx');
-	}
-
-	setAdvance(id: number, advance: number) {
-		const h = this.hmtx;
-		if (!h)
-			throw new Error('the font has no horizontal metrics');
-		if (!Number.isInteger(advance) || advance < 0 || advance > 65535)
-			throw new RangeError(`advance ${advance} does not fit`);
-		// a glyph past the long metrics shares the last advance, so it has none of its own to change
-		if (id >= h.metrics.length)
-			throw new Error(`glyph ${id} has no advance of its own: it takes the last one in hmtx`);
-		h.metrics[id].advance = advance;
-		this.modified.add('hmtx');
-	}
-
-	// the font as a file: every table as it was read except those that have been changed
-	save(): Uint8Array | Promise<Uint8Array> {
-		return new Uint8Array(0);
 	}
 
 	numGlyphs() {
@@ -2438,45 +2245,204 @@ export class Font extends makeClass<{
 
 		} else if (this.CBLC && this.CBDT) {
 			const i 	=  argmin(this.CBLC.bitmapSizes, i => Math.abs(i.ppemX - ppem));
-			const table	= this.CBLC.bitmapSizes[i];
-			return table.getGlyph(i, this.CBDT.data);
+			return this.CBLC.bitmapSizes[i].getGlyph(i, this.CBDT.data);
 		}
 	}
 	getGlyphCOLR(id: number) {
 		return this.COLR && this.COLR.getGlyph(this, this.CPAL, id);
 	}
 
-	getGlyphSVG(id: number, preferCOLR = false) {
-		if (preferCOLR) {
-			const layers = this.getGlyphCOLR(id);
-			if (layers)
-				return COLRtoSVG(layers);
-		}
-
-		const svg = this['SVG '];
-		if (svg) {
-			for (const i of svg.documents) {
-				if (id >= i.startGlyphID && id <= i.endGlyphID) {
-					const svg	= xml.parse(bin.text.decode(i.doc.subarray(0, i.doc_length)));
-					const g		= getElementById(svg.firstElement()!, `glyph${id}`);
-					if (g)
-						return ExtractSVG(svg, g);
-				}
-			}
-		}
-
-		if (!preferCOLR) {
-			const layers = this.getGlyphCOLR(id);
-			if (layers)
-				return COLRtoSVG(layers);
-		}
-
-		const glyph = this.getGlyph(id);
-		if (glyph)
-			return makeSVG(
-				[new xml.Element('path', {d: makeSVGPath(parseCurve(glyph.curve!)), fill: 'black'})],
+	
+	getGlyphSVG(id: number, convert = 15) {
+		const layers	= () => { const l = this.getGlyphCOLR(id); return l && SVGlayers(l); };
+		const table		= () => {
+			const svgs	= this['SVG '];
+			const doc	= svgs && getSVGTable(svgs, id);
+			return doc && !(doc.doc[0] === 0x1f && doc.doc[1] === 0x8b) && extractGlyphElement(bin.text.decode(doc.doc.subarray(0, doc.doc_length)), id);
+		};
+		const outline	= () => {
+			const glyph = this.getGlyph(id);
+			return glyph?.curve?.length && makeSVG(
+				[new xml.Element('path', {d: makeSVGPath(parseCurve(glyph.curve!)), fill: 'currentColor'})],
 				new float2.extent(float2(glyph.min.x, - glyph.max.y), float2(glyph.max.x, -glyph.min.x))
 			);
+		};
+		// a PNG's size is in its header: width and height, big-endian, after the signature and chunk name
+		const image		= () => {
+			const ppem	= Math.max(0, ...(this.sbix?.strikes.map(s => s.ppem) ?? this.CBLC?.bitmapSizes.map(s => s.ppemX) ?? this.EBLC?.bitmapSizes.map(s => s.ppemX) ?? []));
+			const img	= ppem && this.getGlyphImage(id, ppem);
+			if (!img || !img.type.startsWith('png') || img.data.length < 24)
+				return;
+			const k		= (this.head?.units_per_em || 1000) / ppem;
+
+			const png	= new bin.stream(new Uint8Array(img.data.buffer, img.data.byteOffset, img.data.byteLength)).read(PNGSpec);
+			const w		= (png.IHDR?.width ?? 0) * k, h = (png.IHDR?.height ?? 0) * k;
+			const x		= img.originOffset.x * k, y = -(img.originOffset.y * k + h);
+			const href	= 'data:image/png;base64,' + btoa(Array.from(img.data, b => String.fromCharCode(b)).join(''));
+			return makeSVG([new xml.Element('image', {href, x, y, width: w, height: h})], new float2.extent(float2(x, y), float2(x + w, y + h)));
+		};
+		const svg = ((convert & 1) && layers()) || table() || ((convert & 2) && outline()) || ((convert & 4) && image());
+		return svg || undefined;
 	}
+
+	//-----------------------------------------------------------------------------
+	// modifications
+	//-----------------------------------------------------------------------------
+
+	// Makes a font with CFF outlines one with TrueType outlines, which is what can be edited and written: each glyph's cubics become quadratics (within half a font unit),
+	// and the font is written as TrueType from then on. Hinting is lost. Returns false if there was nothing to convert.
+	convertToTrueType(): boolean {
+		if (this.glyphdata || !this['CFF '])
+			return false;
+		const n			= this.numGlyphs();
+		const curves	= Array.from({length: n}, (_, id) => this.getGlyphCurves(id));
+		this.glyphdata = Array.from({length: n}, () => new Uint8Array(0));
+		delete (this as any)['CFF '];
+		delete (this as any)['CFF2'];
+		this.rawTables.delete('CFF ');
+		this.rawTables.delete('CFF2');
+		this.rawTables.delete('VORG');
+		this.sfntVersion = 0x00010000;
+
+		const m1 = {
+			version:				0x00010000,
+			numGlyphs:				n,
+			maxPoints:				0,
+			maxContours:			0,
+			maxComponentPoints:		0,
+			maxComponentContours:	0,
+			maxZones:				1,
+			maxTwilightPoints:		0,
+			maxStorage:				0,
+			maxFunctionDefs:		0,
+			maxInstructionDefs:		0,
+			maxStackElements:		0,
+			maxSizeOfInstructions:	0,
+			maxComponentElements:	0,
+			maxComponentDepth:		0,
+		};
+		const s = new bin.growingStream();
+		s.write(maxp, m1);
+		this.loadTable('maxp', s.terminate());
+
+		for (let id = 0; id < n; id++)
+			this.setGlyph(id, {curve: curves[id]});
+		return true;
+	}
+
+
+	// the font as a file: every table as it was read except those that have been changed
+	save(): Uint8Array | Promise<Uint8Array> {
+		return new Uint8Array(0);
+	}
+
+	setAdvance(id: number, advance: number) {
+		const h = this.hmtx;
+		if (!h)
+			throw new Error('the font has no horizontal metrics');
+		if (!Number.isInteger(advance) || advance < 0 || advance > 65535)
+			throw new RangeError(`advance ${advance} does not fit`);
+		// a glyph past the long metrics shares the last advance, so it has none of its own to change
+		if (id >= h.metrics.length)
+			throw new Error(`glyph ${id} has no advance of its own: it takes the last one in hmtx`);
+		h.metrics[id].advance = advance;
+		this.modified.add('hmtx');
+	}
+
+		// Replaces a glyph with `glyph`, as getGlyph gives one (so a glyph from getGlyph can be changed and put back): its
+	// outline from `curve`, or if it has `refs` a composite of them, with the bounding box it was given or else that of
+	// what they make. Its hinting instructions are dropped. The glyph's left side bearing follows its new extent; its
+	// advance is left alone (see setAdvance). Only the glyphs of a font with TrueType outlines can be written.
+	setGlyph(id: number, glyph: Partial<Pick<Glyph, 'curve' | 'refs' | 'min' | 'max' | 'overlap'>>) {
+		const glyphs = this.glyphdata;
+		if (!glyphs)
+			throw new Error('only a font with TrueType outlines (glyf) can have its glyphs written');
+		if (!Number.isInteger(id) || id < 0 || id >= glyphs.length)
+			throw new RangeError(`no glyph ${id}`);
+
+		const h = this.hmtx;
+
+		interface Snapshot {
+			data:		Uint8Array;
+			bearing?:	number;
+			edit?:		{min: {x: number, y: number}, max: {x: number, y: number}, points: number, contours: number, components?: number};
+		}
+
+		// the box the glyph had, which is in the first bytes of what is stored
+		const before: Snapshot	= {
+			data:		glyphs[id],
+			edit:		this.edits.get(id),
+			bearing:	h ? (id < h.metrics.length ? h.metrics[id].bearing : h.bearing[id - h.metrics.length]) : undefined
+		};
+		
+		let {min, max} = glyph;
+		if (glyph.refs?.length && (!min || !max)) {
+			const all = glyph.refs.flatMap(ref => transformCurve(this.getGlyphCurves(ref.glyph), placement(ref)));
+			min = all.length ? float2(Math.min(...all.map(v => v.x)), Math.min(...all.map(v => v.y))) : float2(0, 0);
+			max = all.length ? float2(Math.max(...all.map(v => v.x)), Math.max(...all.map(v => v.y))) : float2(0, 0);
+		}
+		const encoded = new GlyphSerialiser({curve: glyph.curve, refs: glyph.refs, min, max, overlap: glyph.overlap});
+
+		// the left side bearing keeps following the glyph's left edge if it did, as the convention has it (head.flags bit 1),
+		// and is otherwise something the font chose, which is not changed
+		const follows = !before.data || before.data.length < 10 || before.bearing === new DataView(before.data.buffer, before.data.byteOffset).getInt16(2);
+		const after: Snapshot	= {
+			data:		encoded.toBytes(),
+			edit:		{min: encoded.min, max: encoded.max, points: encoded.points, contours: encoded.contours, components: encoded.components},
+			bearing:	before.bearing !== undefined && follows && (encoded.points || encoded.components) ? encoded.min.x : undefined
+		};
+
+		const set = (snap: Snapshot) => {
+			glyphs[id] = snap.data;
+			this.cached[id] = undefined;
+			if (snap.edit)
+				this.edits.set(id, snap.edit);
+			else
+				this.edits.delete(id);
+			if (h && snap.bearing !== undefined) {
+				if (id < h.metrics.length)
+					h.metrics[id].bearing = snap.bearing;
+				else
+					h.bearing[id - h.metrics.length] = snap.bearing;
+				this.modified.add('hmtx');
+			}
+			this.modified.add('glyf');
+		};
+		set(after);
+		return {undo: () => set(before), redo: () => set(after) };
+	}
+
+	// an edited document of a glyph put back into the document of the SVG table that it came from
+	setGlyphSVG(id: number, edited: string) {
+		const svg = this['SVG '];
+		const index	= svg ? getSVGTableIndex(svg, id) : -1;
+		if (index < 0)
+			throw new Error(`the SVG table has no document for glyph ${id}`);
+
+		// puts a document of the SVG table back as text (UTF-8), and writes the table again with everything else in it as it was
+		const set = (text: string) => {
+			const s		= new bin.growingStream();
+			s.write(SVG, {
+				version: 0,
+				documents: svg!.documents.map((d, i) => {
+					return {...d, doc: i === index ? bin.text.encode(text, 'utf8') : d.doc.subarray(0, d.doc_length), doc_length: 0};
+				}),
+				reserved: 0
+			});
+			this.loadTable('SVG ', s.terminate());
+		};
+
+		const doc		= svg!.documents[index];
+		const before	= bin.text.decode(doc.doc.subarray(0, doc.doc_length));
+		const after 	= mergeGlyphSVG(before, id, edited);
+		set(after);
+
+		return {
+			undo: () => set(before),
+			redo: () => set(after)
+		};
+
+	}
+
 
 }

@@ -5,8 +5,15 @@ import {WOFF, WOFF2} from './woff';
 import {layout} from './write';
 
 export {WOFF, WOFF2} from './woff';
-export {Font, Glyph, GlyphImage, GlyphRef, GlyphSnapshot, Metrics, ID} from './font';
-export {curveVertex, bezier2Curve, bezier3Curve, type CurveSink, type CurveSource, makeCurveVertex, parseCurve, transformCurve, mapCurve, curvepathDistance2} from './curves';
+export {Font, Glyph, GlyphImage, GlyphRef, Metrics, ID} from './font';
+export {parseSVG, parseSVGpath, parseSVGshape, makeSVGPath, type SVGDocument, type SVGShape} from './svg';
+export {curveVertex,
+	ON_BEGIN, ON_CURVE, ON_END, OFF_BEZ2, OFF_BEZ3, OFF_ARC, ON_ARC,
+	type CurveSink, type CurveSource,
+	bezier2Curve, bezier3Curve, simplifyCurve,
+	makeCurve, makeCurveVertex, parseCurve, transformCurve, mapCurve,
+	curvepathDistance2
+} from './curves';
 
 export interface FontGroup {
 	fonts: Font[];
